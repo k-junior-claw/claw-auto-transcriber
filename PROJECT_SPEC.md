@@ -1,114 +1,108 @@
-# Claw Auto-Transcriber - Project Specification (REVISED)
+# Claw Auto-Transcriber - Project Specification (MCP SERVER v3.0)
 
-## 🔑 KEY CLARIFICATION
+## 🔑 KEY ARCHITECTURE CLARIFICATION
 
-**Voice messages are an INPUT MODALITY, not for returning transcriptions.**
+**This is an MCP Server, not a Telegram Bot.**
 
-This bot treats voice messages as an alternative way for users to communicate with it. After transcribing, the text is processed as bot input (like a regular text message), and the bot responds with its own generated response—not the transcription.
+The server provides a `transcribe_audio` tool that I (Kelvin Junior agent) invoke when I need to transcribe voice/audio messages. The transcription becomes a tool response that I then process as input.
 
-**Revised Flow:**
-1. User sends voice message to Telegram
-2. Bot downloads audio (OGG format)
-3. Audio processor validates & converts
-4. Transcriber sends to Google Cloud STT
-5. Google Cloud returns transcription
-6. **Bot treats transcription as USER INPUT** (like a regular text message)
-7. Bot processes transcribed text (commands, queries, etc.)
-8. Bot generates appropriate response
-9. Bot sends response back to Telegram
+**Architecture Flow:**
+1. **I receive/process** Telegram messages (as the agent)
+2. **When I detect audio**, I invoke the `transcribe_audio` tool from this MCP server
+3. **MCP Server** processes: Audio download → Validation → Google STT → Get transcription
+4. **I receive transcription** as tool response
+5. **I process transcribed text** as if it were regular user input
+6. **I generate and send response** back to Telegram
+
+**MCP Server Role:** Only provides the transcription capability as a tool. The agent handles all Telegram interaction and response generation.
 
 ---
 
 ## Overview
 
-**Project:** Auto-transcriber for voice recordings on Telegram channel  
+**Project:** MCP Server - Audio Transcription Service  
 **Repository:** https://github.com/k-junior-claw/claw-auto-transcriber  
 **Platform:** Python  
-**Transcription Service:** Google Cloud Speech-to-Text (STT)  
-**Primary Channel:** Telegram  
-**Key Innovation:** Voice messages as alternative input modality
+**Service Type:** MCP (Model Context Protocol) Server  
+**Primary Tool:** `transcribe_audio`  
+**Transcription Engine:** Google Cloud Speech-to-Text (STT)  
+**Key Innovation:** Voice/audio transcription as a reusable MCP tool
+
+**Architecture:**
+- **Server:** Implements MCP protocol, provides transcription tool
+- **Client:** I (Kelvin Junior agent) invoke the tool when needed
+- **Separation of Concerns:** Server handles audio→text, agent handles user interaction
 
 ## 1. Components & Module Design
 
 ### Core Components
 
-#### 1.1 Telegram Bot Handler (`telegram_bot.py`)
+#### 1.1 MCP Server (`mcp_server.py`) - **NEW PRIMARY COMPONENT**
 **Responsibilities:**
-- Initialize and manage Telegram bot connection
-- Receive voice messages from Telegram channel
-- Process audio file downloads from Telegram
-- **Handle transcribed text as bot input** (process like regular text messages)
-- Generate appropriate bot responses based on transcribed content
-- Send bot responses back to Telegram
-- Handle user commands and interactions
+- Implement MCP (Model Context Protocol)
+- Expose `transcribe_audio` tool
+- Handle tool invocations from agents
+- Manage tool lifecycle
+- Provide tool metadata and schema
 
 **Key Functions:**
-- `start_bot()` - Initialize bot listener
-- `download_voice_message(msg)` - Download audio from Telegram
-- `process_transcribed_input(text, user_id, chat_id)` - **NEW: Handle transcription as input**
-- `route_to_handler(transcribed_text)` - **NEW: Route to appropriate command/query handler**
-- `send_response(chat_id, response)` - Send bot's generated response
-- `handle_error(error_msg, chat_id)` - Error reporting
+- `initialize_server()` - Setup MCP server
+- `register_tools()` - Register transcribe_audio tool
+- `handle_tool_call()` - Process incoming tool invocations
+- `get_tool_schema()` - Return tool definition JSON
 
-**Key Change:** Instead of `send_transcription()`, we now have `process_transcribed_input()` and `send_response()`
+#### 1.2 Tool Definition (`tools/transcribe_audio.py`) - **NEW COMPONENT**
+**Responsibilities:**
+- Define transcribe_audio tool interface
+- Specify input parameters (audio file, format, etc.)
+- Define output schema (transcription, confidence, etc.)
+- Validate tool invocation parameters
 
-#### 1.2 Google Cloud STT Integration (`transcriber.py`)
+**Key Functions:**
+- `get_tool_schema()` - Return JSON schema for tool
+- `validate_inputs(audio_data, metadata)` - Validate invocation
+- `format_response(transcription, confidence)` - Format tool response
+
+#### 1.3 Audio Processor (`audio_processor.py`)
+**Responsibilities:**
+- Receive audio data from tool invocations
+- Validate audio format and compatibility
+- Convert audio to Google STT format (FLAC)
+- Validate audio quality and duration limits
+- Manage temporary audio files (ephemeral)
+
+**Key Functions:**
+- `validate_audio(audio_bytes)` - Check format/size
+- `convert_ogg_to_flac(ogg_bytes)` - Convert format
+- `get_audio_duration(audio_data)` - Check length
+- `cleanup_temp_files()` - Remove processed files immediately
+
+#### 1.4 Google STT Integration (`transcriber.py`)
 **Responsibilities:**
 - Authenticate with Google Cloud using service account credentials
-- Convert audio files to formats compatible with STT API
-- Send audio to Google Cloud Speech-to-Text
+- Send audio to Google Cloud Speech-to-Text API
 - Parse transcription responses
 - Handle API errors and retries
+- Extract transcription text and confidence
 
 **Key Functions:**
 - `initialize_stt_client()` - Setup Google Cloud connection
-- `transcribe_audio(audio_file_path)` - Main transcription function
-- `convert_audio_format(input_path, output_path)` - Format conversion
-- `parse_transcription_response(response)` - Extract text from API response
-
-#### 1.3 Audio Processing Module (`audio_processor.py`)
-**Responsibilities:**
-- Verify audio file format and compatibility
-- Convert Telegram audio (OGG) to Google Cloud STT compatible format (FLAC)
-- Validate audio quality and duration limits
-- Extract audio metadata
-- Manage temporary audio files
-- **Ephemeral processing: immediately delete audio after transcription**
-
-**Key Functions:**
-- `validate_audio(file_path)` - Check format/size constraints
-- `convert_ogg_to_flac(ogg_path, flac_path)` - Convert format
-- `get_audio_duration(file_path)` - Check length
-- `cleanup_temp_files()` - Remove processed files immediately
-
-**Privacy Note:** Audio files are processed ephemerally and deleted immediately after transcription. No audio storage.
-
-#### 1.4 Input Processing Router (`input_router.py`) - **NEW COMPONENT**
-**Responsibilities:**
-- Route transcribed text to appropriate bot handlers
-- Integrate with existing command/query parsing system
-- Validate transcribed input before processing (security)
-- Handle both voice and text inputs uniformly
-
-**Key Functions:**
-- `route_input(text, user_id, chat_id)` - Route to appropriate handler
-- `validate_input(text)` - Security validation (prevent injection attacks)
-- `is_command(text)` - Determine if input is a bot command
-- `extract_query(text)` - Parse natural language queries
+- `transcribe_audio(audio_data, metadata)` - Main transcription function
+- `parse_transcription_response(response)` - Extract text & confidence
 
 #### 1.5 Configuration Manager (`config.py`)
 **Responsibilities:**
-- Load and validate environment variables
+- Load environment variables
 - Manage Google Cloud credentials
-- Store Telegram bot token
 - Provide configuration defaults
+- Validate required settings
 
 **Key Variables:**
-- `TELEGRAM_BOT_TOKEN`
 - `GOOGLE_CLOUD_PROJECT_ID`
 - `GOOGLE_APPLICATION_CREDENTIALS_PATH`
 - `SUPPORTED_AUDIO_FORMATS`
 - `MAX_AUDIO_DURATION` (default: 60 seconds)
+- `TEMP_AUDIO_DIR`
 
 #### 1.6 Logger Module (`logger.py`)
 **Responsibilities:**
@@ -124,11 +118,11 @@ This bot treats voice messages as an alternative way for users to communicate wi
 **Purpose:** Comprehensive testing of all modules
 
 **Test Categories:**
-- Unit tests for each component
-- Integration tests for voice→transcription→response flow
-- Mock tests for external services (Telegram, Google Cloud)
-- Command routing tests for transcribed text
-- Security validation tests
+- Unit tests for each component (80% coverage goal with pytest)
+- Integration tests for MCP tool flow
+- Mock tests for Google Cloud STT
+- Tool invocation and response tests
+- Error handling tests
 
 #### 1.8 Documentation (`docs/`)
 **Purpose:** User and developer documentation
@@ -136,450 +130,574 @@ This bot treats voice messages as an alternative way for users to communicate wi
 **Contents:**
 - Installation guide
 - Configuration instructions
-- Usage examples with voice messages
+- MCP usage examples
+- Tool invocation examples
 - API documentation
-**Voice Input Modality explanation
 
-## 2. Interaction Flow
+## 2. Interaction Flow - MCP Tool Invocation
 
-### 2.1 Voice Message as Input Modality (PRIMARY FLOW)
+### 2.1 MCP Tool Invocation Sequence (PRIMARY FLOW)
 
 ```mermaid
 sequenceDiagram
-    participant User as Telegram User
-    participant Bot as Telegram Bot
+    participant Agent as Kelvin Junior (Agent)
+    participant MCP as MCP Server
     participant AudioProc as Audio Processor
     participant Transcriber as Google STT
-    participant Router as Input Router
-    participant Handler as Bot Handler
-    participant Response as Response Generator
+    participant GCloud as Google Cloud
 
-    User->>Bot: Send voice message
-    Bot->>Bot: receive_voice_message()
-    Bot->>Bot: download_audio()
-    Bot->>AudioProc: validate_and_convert(audio_ogg)
-    AudioProc-->>Bot: audio_flac
-    Bot->>Transcriber: transcribe_audio(audio_flac)
-    Transcriber->>Google: API request
-    Google->>Transcriber: transcription text
-    Transcriber-->>Bot: "What's the weather?"
-    Bot->>Router: route_input("What's the weather?", user_id)
-    Router->>Handler: process_query("weather")
-    Handler->>WeatherAPI: get_weather()
-    WeatherAPI->>Handler: weather_data
-    Handler->>Response: format_response(weather_data)
-    Response-->>Bot: "It's 72°F and sunny"
-    Bot->>User: Send text response
-    Note over Bot,AudioProc: cleanup_temp_audio()
+    Note over Agent,GCloud: Agent detects audio message
+    Agent->>MCP: invoke_tool("transcribe_audio", audio_data)
+    MCP->>AudioProc: validate_audio(audio_data)
+    AudioProc-->>MCP: validation passed
+    MCP->>AudioProc: convert_ogg_to_flac(audio_data)
+    AudioProc-->>MCP: flac_data
+    MCP->>Transcriber: transcribe_audio(flac_data, metadata)
+    Transcriber->>GCloud: API request
+    GCloud->>Transcriber: transcription result
+    Transcriber-->>MCP: {"text": "What's the weather?", "confidence": 0.95}
+    MCP-->>Agent: Tool response with transcription
+    Note over Agent: Agent processes transcription as input
+    Agent->>Agent: generate_response("What's the weather?")
+    Agent->>User: Send final response
 ```
 
 **Flow Description:**
-1. User sends voice message to Telegram bot
-2. Bot downloads audio in OGG format
-3. Audio processor validates and converts to FLAC
-4. Transcriber sends FLAC to Google Cloud STT
-5. Google Cloud returns transcription text
-6. **Bot treats transcription as user input**
-7. Input router determines if it's a command or query
-8. Appropriate handler processes the request
-9. Response generator creates bot's answer
-10. Bot sends response back to user
-11. Temporary audio files are cleaned up
+1. **I (agent)** detect a voice message from user on Telegram
+2. **I invoke** `transcribe_audio` tool on MCP Server with audio data
+3. **MCP Server** validates and converts the audio
+4. **MCP Server** sends audio to Google Cloud STT
+5. **Google Cloud** returns transcription (e.g., "What's the weather?")
+6. **MCP Server** formats and returns tool response to me
+7. **I (agent)** receive transcription and treat as user input
+8. **I process** the transcribed text like a regular message
+9. **I generate and send** appropriate response back to user
 
-### 2.2 Authentication Flow
+**Key Difference:** Unlike a bot, the MCP server **never interacts directly with Telegram**. It only provides the transcription capability that I invoke as a tool.
+
+### 2.2 MCP Protocol Implementation Flow
 
 ```mermaid
 sequenceDiagram
-    participant App as Application
+    participant Client as Agent Client
+    participant Server as MCP Server
+    participant Tool as Transcribe Tool
     participant Config as Config Manager
-    participant DotEnv as .env File
-    participant GCloud as Google Cloud
-    participant Telegram as Telegram API
 
-    App->>Config: load_configuration()
-    Config->>DotEnv: Load environment variables
-    DotEnv-->>Config: TELEGRAM_BOT_TOKEN, GOOGLE_CREDENTIALS
-    Config->>Config: Validate configuration
-    Config-->>App: Configuration loaded
-    App->>GCloud: Initialize STT client
-    GCloud-->>App: Client ready
-    App->>Telegram: Initialize Bot
-    Telegram-->>App: Bot connected
-    App->>App: Start polling for messages
+    Client->>Server: Initialize connection
+    Server->>Config: Load configuration
+    Config-->>Server: Config loaded
+    Server-->>Client: Server ready
+    Client->>Server: List available tools
+    Server->>Tool: Get tool schema
+    Tool-->>Server: Tool definition JSON
+    Server-->>Client: ["transcribe_audio"] + schemas
+    Client->>Server: Invoke transcribe_audio(audio_data)
+    Server->>Tool: Execute tool(audio_data)
+    Tool-->>Server: Process audio → transcription
+    Tool-->>Server: {"text": "...", "confidence": 0.95}
+    Server-->>Client: Tool response
 ```
 
-### 2.3 Error Handling Flow
+### 2.3 Error Handling in MCP Tool Flow
 
 ```mermaid
 sequenceDiagram
-    participant Bot as Telegram Bot
+    participant Agent as Agent
+    participant MCP as MCP Server
     participant Logger as Logger
-    participant User as Telegram User
 
-    Bot->>Bot: Process voice message
+    Agent->>MCP: Invoke transcribe_audio(audio_data)
     alt Audio validation fails
-        Bot->>Logger: log_error(validation_failed)
-        Logger-->>Bot: Error logged
-        Bot->>User: Send friendly error message
+        MCP->>Logger: log_error(invalid_audio)
+        Logger-->>MCP: Error logged
+        MCP-->>Agent: Tool error: Invalid audio format/file type
     else STT API fails
-        Bot->>Logger: log_error(stt_api_failed)
-        Bot->>Bot: Retry transcription (max 3 attempts)
+        MCP->>Logger: log_error(stt_api_failed)
+        MCP->>MCP: Retry transcription (max 3 attempts)
         alt Retry succeeds
-            Bot->>Bot: Continue normal flow
+            MCP-->>Agent: Success with transcription
         else Retry fails
-            Bot->>Logger: log_error(final_failure)
-            Bot->>User: Sorry, transcription failed. Please try again.
+            MCP->>Logger: log_error(final_failure)
+            MCP-->>Agent: Tool error: Transcription failed after retries
         end
-    else Input routing fails
-        Bot->>Logger: log_error(routing_failed)
-        Bot->>User: I didn't understand that. Please try again.
+    else Audio too long
+        MCP->>Logger: log_error(duration_exceeded)
+        MCP-->>Agent: Tool error: Audio exceeds maximum duration (60s)
     end
 ```
 
 ## 3. Data Design
 
-### 3.1 Configuration Data (.env file)
-
-```bash
-# Telegram
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-
-# Google Cloud
-GOOGLE_CLOUD_PROJECT_ID=your_project_id
-GOOGLE_APPLICATION_CREDENTIALS=path/to/service_account.json
-
-# Application Settings
-MAX_AUDIO_DURATION=60  # seconds
-LOG_LEVEL=INFO
-TEMP_AUDIO_DIR=/tmp/claw_transcriber
-```
-
-### 3.2 Transcription Input Schema (Temporary, Ephemeral)
-
-**Storage:** In-memory only (not persisted)  
-**Lifecycle:** Created → Routed → Processed → Discarded
+### 3.1 MCP Tool Schema (JSON)
 
 ```json
 {
-  "message_id": "msg_12345",
-  "user_id": 987654321,
-  "chat_id": 123456789,
-  "transcribed_text": "What's the weather?",
-  "original_audio_id": "AwACAgQAAxkB...",
-  "audio_duration": 3.2,
-  "transcribed_at": "2026-02-01T10:30:00Z",
-  "confidence": 0.95
-}
-```
-
-**Note:** This data is treated exactly like a regular text message once transcribed. It routes through the same command/query parsing system.
-
-### 3.3 Logging Data Structure (Privacy-Aware)
-
-```json
-{
-  "timestamp": "2026-02-01T10:30:00Z",
-  "level": "INFO",
-  "module": "telegram_bot",
-  "function": "handle_voice_message",
-  "message": "Voice message processed successfully",
-  "metadata": {
-    "user_id": 987654321,
-    "audio_duration": 3.2,
-    "processing_time_ms": 2150,
-    "transcription_confidence": 0.95
+  "tool_name": "transcribe_audio",
+  "description": "Transcribe audio/voice messages to text using Google Cloud Speech-to-Text",
+  "parameters": {
+    "audio_data": {
+      "type": "string",
+      "format": "base64",
+      "description": "Base64-encoded audio file (OGG format from Telegram)"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "original_format": {"type": "string", "enum": ["ogg", "mp3", "wav"]},
+        "duration_seconds": {"type": "number"},
+        "user_id": {"type": "string"},
+        "message_id": {"type": "string"}
+      }
+    }
+  },
+  "response_schema": {
+    "transcription": {
+      "type": "string",
+      "description": "The transcribed text from the audio"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence score for the transcription (0.0 to 1.0)"
+    },
+    "language": {
+      "type": "string",
+      "description": "Detected language code (e.g., 'en-US')"
+    },
+    "duration": {
+      "type": "number",
+      "description": "Audio duration in seconds"
+    }
+  },
+  "requirements": {
+    "max_duration": 60,
+    "supported_formats": ["audio/ogg", "audio/mp3", "audio/wav", "audio/flac"],
+    "api_key_required": true
   }
 }
 ```
 
-**Privacy:** No audio content or transcription text is logged. Only metadata.
+### 3.2 Configuration Data (.env file)
 
-### 3.4 Telegram Message Context Schema
+```bash
+# Google Cloud
+GOOGLE_CLOUD_PROJECT_ID=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+
+# MCP Server
+MCP_SERVER_HOST=localhost
+MCP_SERVER_PORT=8765
+MCP_SERVER_NAME=claw-auto-transcriber
+
+# Application Settings
+MAX_AUDIO_DURATION=60  # seconds
+TEMP_AUDIO_DIR=/tmp/claw_transcriber
+LOG_LEVEL=INFO
+
+# Security
+REQUIRE_AUTHENTICATION=true
+RATE_LIMIT_PER_MINUTE=60
+```
+
+### 3.3 MCP Server State (Runtime, Ephemeral)
+
+**Storage:** In-memory only (no persistence between server restarts)  
+**Lifecycle:** Server start → Tools registered → Connections handled → Server stop
 
 ```json
 {
-  "message_id": 12345,
-  "chat_id": 123456789,
-  "user_id": 987654321,
-  "timestamp": "2026-02-01T10:29:30Z",
-  "message_type": "voice",  // or "text" after transcription
-  "original_audio_id": "AwACAgQAAxkB...",
-  "audio_duration": 3.2,
-  "mime_type": "audio/ogg"
+  "server_id": "claw-transcriber-001",
+  "start_time": "2026-02-01T12:00:00Z",
+  "active_connections": 3,
+  "tools_registered": ["transcribe_audio"],
+  "total_invocations": 157,
+  "errors_in_session": 2
 }
 ```
 
-### 3.5 Bot Response Schema
+### 3.4 Logging Data Structure (for debugging/monitoring)
 
 ```json
 {
-  "response_id": "resp_12345",
-  "to_message_id": 12345,
-  "user_id": 987654321,
-  "chat_id": 123456789,
-  "response_text": "It's 72°F and sunny today!",
-  "generated_at": "2026-02-01T10:30:02Z",
-  "processing_time_ms": 2500
+  "timestamp": "2026-02-01T12:15:30Z",
+  "level": "INFO",
+  "component": "mcp_server",
+  "event": "tool_invoked",
+  "metadata": {
+    "tool_name": "transcribe_audio",
+    "connection_id": "conn_abc123",
+    "audio_duration": 3.2,
+    "processing_time_ms": 2150
+  }
 }
 ```
 
-### 3.6 Temporary Audio Files (Ephemeral)
+**Privacy:** No audio content or transcription text is logged. Only metadata for debugging.
 
-**Storage Location:** `/tmp/claw_transcriber/`  
-**File Naming:** `audio_{timestamp}_{user_id}_{message_id}.{ext}`  
-**Auto-cleanup:** Files deleted immediately after transcription (within milliseconds)
+### 3.5 Tool Invocation Metadata (Temporary, per-call)
 
-**Privacy Guarantee:** No audio files persist beyond the immediate transcription request.
+**Storage:** In-memory during tool execution only  
+**Lifecycle:** Tool call starts → Created → Processing → Response sent → Discarded
 
-## 4. Implementation Plan
+```json
+{
+  "invocation_id": "invoke_789abc",
+  "connection_id": "conn_abc123",
+  "tool_name": "transcribe_audio",
+  "received_at": "2026-02-01T12:15:30Z",
+  "audio_size_bytes": 45000,
+  "audio_format": "audio/ogg",
+  "processing_time_ms": 2150,
+  "status": "completed",
+  "error": null
+}
+```
 
-### Phase 1: Project Setup & Configuration (High Priority)
+## 4. Implementation Plan (Revised for MCP Architecture)
 
-**Duration:** 1-2 days
-
-**Tasks:**
-1. ✅ Repository already cloned and on GitHub
-2. ✅ PROJECT_SPEC.md created and committed
-3. Create Python virtual environment with uv
-4. Install required packages:
-   - `python-telegram-bot`
-   - `google-cloud-speech`
-   - `pydub` (for audio conversion)
-   - `python-dotenv`
-   - `structlog` (for logging)
-5. Create `.env.template` file with all required variables
-6. Set up `.gitignore` to exclude `.env` and credentials
-7. Initialize logger module
-
-### Phase 2: Core Module Development (High Priority)
+### Phase 1: Core Module Development (High Priority)
 
 **Duration:** 3-4 days
 
 **Tasks:**
-1. **Config Module** (`config.py`)
+1. **Setup MCP Server Framework** (`mcp_server.py`)
+   - Install MCP Python SDK
+   - Create server initialization
+   - Implement basic tool registration
+   - Setup connection handling
+
+2. **Config Module** (`config.py`)
    - Load environment variables
-   - Validate required settings
+   - Validate Google Cloud credentials
    - Provide configuration defaults
-   
-2. **Logger Module** (`logger.py`)
+
+3. **Logger Module** (`logger.py`)
    - Set up structured logging
-   - Configure file and console handlers
-   - Add performance timing functions
-   
-3. **Audio Processor** (`audio_processor.py`)
-   - Implement audio validation
-   - Create conversion functions (OGG → FLAC)
-   - Add duration checking
-   - Implement immediate cleanup after transcription
-   - Add privacy-preserving processing
-   
-4. **Google STT Client** (`transcriber.py`)
-   - Initialize Google Cloud client
-   - Create audio upload and transcription functions
-   - Implement error handling and retries
-   - Parse and format responses
+   - Configure handlers
+   - Add performance timing
 
-5. **Input Router** (`input_router.py`) - **NEW COMPONENT**
-   - Create routing logic for transcribed text
-   - Integrate with existing command/query system
-   - Implement validation for security
-   - Add injection attack prevention
+4. **Audio Processor** (`audio_processor.py`)
+   - Audio validation (format, size, duration)
+   - OGG → FLAC conversion for Google STT
+   - Implement ephemeral file handling
+   - Add privacy-preserving cleanup
 
-### Phase 3: Telegram Bot Integration (High Priority)
-
-**Duration:** 3-4 days (increased due to new requirements)
-
-**Tasks:**
-1. **Bot Handler** (`telegram_bot.py`)
-   - Initialize Telegram bot
-   - Set up voice message detection handler
-   - Implement audio download functionality
-   - **NEW: Call transcription flow on voice messages**
-   - **NEW: Process transcribed text through input router**
-   - **NEW: Route to existing command/query handlers**
-   - Send final bot response back to user
-2. Connect bot to main application loop
-3. Update existing command handlers to work with both text and transcribed input
-4. Add user-friendly error messages
-5. Test complete flow: Voice → Transcription → Processing → Response
-
-### Phase 4: Integration & Testing (High Priority)
-
-**Duration:** 3-4 days (increased due to complexity)
-
-**Tasks:**
-1. **Main Application** (`main.py`)
-   - Wire all components together
-   - Create application entry point
-   - Add graceful shutdown handling
-2. **Integration Testing**
-   - Test full voice message flow
-   - Mock external APIs for testing
-   - Performance testing with various audio lengths
-   - Test command parsing from transcribed text
-   - Test error handling throughout flow
-3. **Security Testing**
-   - Validate input sanitization
-   - Test injection attack prevention
-   - Verify privacy measures (no audio/logging)
-
-### Phase 5: Documentation & Deployment (Medium Priority)
+### Phase 2: Google STT Integration (High Priority)
 
 **Duration:** 2-3 days
 
 **Tasks:**
-1. **Documentation Updates** (`README.md`, `PROJECT_SPEC.md`)
-   - Update with voice input modality explanation
-   - Add usage examples with voice messages
-   - Document privacy guarantees
-   - Add security considerations
-2. **Setup Guide** (`docs/setup.md`)
-   - Detailed setup instructions
-   - Google Cloud project configuration
-   - Telegram bot creation guide
-   - **NEW: Voice message handling guide**
-3. **Testing Documentation** (`docs/testing.md`) - **NEW**
-   - Voice message test scenarios
-   - Command parsing from transcription tests
-4. **Deploy** (future)
-   - Deployment configuration
+1. **Google STT Client** (`transcriber.py`)
+   - Initialize Google Cloud Speech client
+   - Create transcription function
+   - Implement error handling and retries
+   - Parse transcription responses
+   - Extract text and confidence scores
+
+2. **Test STT Integration**
+   - Test with sample audio files
+   - Verify transcription quality
+   - Test error scenarios
+   - Measure latency
+
+### Phase 3: Tool Definition & Integration (High Priority)
+
+**Duration:** 2-3 days
+
+**Tasks:**
+1. **Tool Definition** (`tools/transcribe_audio.py`)
+   - Define transcribe_audio tool schema
+   - Specify input parameters
+   - Define output/response format
+   - Add input validation
+
+2. **Integrate Tool with MCP Server**
+   - Register tool with MCP server
+   - Implement tool invocation handler
+   - Wire audio processor → transcriber → response
+   - Test tool invocation flow
+
+3. **Tool Response Handler**
+   - Format transcription as tool response
+   - Add metadata (confidence, duration, etc.)
+   - Handle errors gracefully
+
+### Phase 4: MCP Server Implementation & Testing
+
+**Duration:** 3-4 days
+
+**Tasks:**
+1. **Implement MCP Protocol**
+   - Tool discovery endpoint
+   - Tool invocation handling
+   - Error response formatting
+   - Connection management
+
+2. **Server Lifecycle Management**
+   - Server start/stop
+   - Graceful shutdown
+   - Signal handling
+
+3. **Testing**
+   - Unit tests (80% coverage with pytest)
+   - Integration tests (MCP tool flow)
+   - Mock Google Cloud STT
+   - Test various audio formats/sizes
+
+4. **Security Testing**
+   - Input validation
+   - Rate limiting
+   - No audio/logging in production
+
+### Phase 5: Documentation & Deployment
+
+**Duration:** 2-3 days
+
+**Tasks:**
+1. **Documentation** (`README.md`, `docs/`)
+   - MCP server setup instructions
+   - Configuration guide
+   - Tool usage examples
+   - Agent integration examples
+   - API reference
+
+2. **Setup Documentation** (`docs/setup.md`)
+   - Google Cloud project creation
+   - Service account setup
+   - Environment configuration
+   - MCP client configuration
+
+3. **Deployment Configuration**
    - Docker setup (optional)
+   - Process manager configuration
    - Monitoring setup
+   - Log aggregation
 
-## 5. Voice Input Modality (NEW SECTION)
+## 5. MCP-Specific Considerations (NEW SECTION)
 
-### 5.1 Concept
+### 5.1 MCP Protocol Compliance
 
-Voice messages are treated as a **first-class input modality** alongside text messages. Users can speak their commands/queries naturally, and the bot will process the transcribed text exactly as if it were typed.
+**Standards:**
+- Follow Model Context Protocol specification
+- Use official MCP SDK for Python
+- Support both STDIO and TCP transports
+- Implement tool discovery mechanism
+- Follow JSON-RPC 2.0 for messages
 
-**Examples:**
-- Voice: *"What's the weather today?"* → Bot queries weather and responds
-- Voice: *"Remind me to call John at 3 PM"* → Bot creates reminder
-- Voice: *"What's on my calendar tomorrow?"* → Bot checks calendar
+**Tool Registration:**
+```json
+{
+  "tools": [
+    {
+      "name": "transcribe_audio",
+      "description": "Transcribe audio/voice to text using Google Cloud STT",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "audio_data": {"type": "string", "format": "base64"},
+          "metadata": {"type": "object"}
+        },
+        "required": ["audio_data"]
+      }
+    }
+  ]
+}
+```
 
-**NOT:**
-- Voice: *"Meeting notes from today"* → X Bot returns transcription (OLD WAY)
-- Voice: *"Meeting notes from today"* → ✓ Bot summarizes meeting and responds (NEW WAY)
+### 5.2 Tool Invocation Flow
 
-### 5.2 Architecture Benefits
+**From Agent Perspective:**
+```python
+# Agent invokes the tool
+tool_response = await mcp_client.call_tool(
+    "transcribe_audio",
+    {
+        "audio_data": base64_audio,
+        "metadata": {"format": "ogg", "duration": 3.2}
+    }
+)
 
-1. **Extends Existing Bot Capabilities** - No need to rebuild command system
-2. **Natural User Experience** - Speak naturally, get intelligent responses
-3. **Privacy-Preserving** - No audio/transcription storage
-4. **Security** - Same input validation as text messages
-5. **Accessibility** - Hands-free interaction for users
+# Agent receives and processes response
+transcription = tool_response["transcription"]
+confidence = tool_response["confidence"]
+# ... process transcription as input ...
+```
 
-### 5.3 Implementation Notes
+### 5.3 Security & Access Control
 
-- Transcribed text passes through the same routing system as regular text
-- Existing commands/queries work identically with voice input
-- Response generation uses existing business logic
-- Audio is immediately discarded after transcription
-- No special handling needed for most commands
+**Authentication:**
+- MCP server may require authentication token
+- Agent must provide valid credentials
+- Rate limiting per connection
+- Audit logging for tracking usage
 
-## 6. File Structure
+**Input Validation:**
+- Validate all audio data before processing
+- Sanitize metadata to prevent injection
+- Check file size limits
+- Reject unsupported formats
+
+### 5.4 Performance & Resource Management
+
+**Optimization:**
+- Reuse Google Cloud STT client connections
+- Keep audio files in memory (no disk I/O when possible)
+- Parallel processing for multiple concurrent tool calls
+- Connection pooling
+
+**Resource Limits:**
+- Maximum concurrent tool invocations: 10
+- Audio size limit: 10MB per invocation
+- Timeout per invocation: 30 seconds
+- Memory limit: 512MB per audio file
+
+## 6. File Structure (Updated for MCP Server)
 
 ```
 claw-auto-transcriber/
 ├── .env.template                          # Environment variables template
 ├── .gitignore                            # Git ignore patterns
-├── requirements.txt                      # Python dependencies
-├── README.md                             # Project overview
-├── PROJECT_SPEC.md                       # This specification
-├── CURSOR_TOOL_DOCS.md                   # Cursor CLI documentation
-├── main.py                               # Application entry point
-├── config.py                             # Configuration management
-├── logger.py                             # Logging utilities
-├── telegram_bot.py                       # Telegram integration
+├── requirements.txt                      # Python dependencies (including mcp SDK)
+├── README.md                             # Project overview (MCP server)
+├── PROJECT_SPEC.md                       # This specification (v3.0)
+├── mcp_server.py                         # **NEW: MCP server implementation**
+├── tools/
+│   ├── __init__.py
+│   └── transcribe_audio.py               # **NEW: Tool definition**
 ├── audio_processor.py                    # Audio handling
 ├── transcriber.py                        # Google STT integration
-├── input_router.py                       # **NEW: Routes transcribed input**
+├── config.py                             # Configuration management
+├── logger.py                             # Logging utilities
 ├── tests/
 │   ├── __init__.py
-│   ├── test_telegram_bot.py
+│   ├── test_mcp_server.py                # **NEW: MCP server tests**
+│   ├── test_transcribe_tool.py           # **NEW: Tool invocation tests**
 │   ├── test_audio_processor.py
 │   ├── test_transcriber.py
-│   ├── test_input_router.py              # **NEW**
-│   └── fixtures/                         # Test audio files
+│   └── fixtures/                         # Test audio files (sample OGGs)
 └── docs/
     ├── setup.md                          # Setup instructions
-    ├── architecture.md                   # Architecture details
-    └── voice_input.md                    # **NEW: Voice input guide**
+    ├── mcp_usage.md                      # **NEW: MCP usage guide**
+    └── tool_reference.md                 # **NEW: Tool API reference**
 ```
 
-## 7. Security & Best Practices
+## 7. Testing Strategy (80% Coverage with pytest)
 
-### 7.1 Credential Management
+### 7.1 Unit Tests (Individual Components)
+- **MCP Server:** Tool registration, request handling, response formatting
+- **Tool Definition:** Schema validation, input/output formatting
+- **Audio Processor:** OGG validation, FLAC conversion, cleanup
+- **Google STT Integration:** API calls, response parsing, error handling
+- **Configuration:** .env loading, validation
+- **Logging:** Log structure, metadata inclusion
+
+### 7.2 Integration Tests (Component Interactions)
+- MCP tool invocation → Audio processing → STT → Response flow
+- Concurrent tool calls (stress test)
+- Error propagation through layers
+- Audio validation before STT
+
+### 7.3 End-to-End Tests (MCP Protocol)
+- Full MCP tool invocation cycle
+- JSON-RPC message format compliance
+- Tool discovery functionality
+- Error response format
+
+## 8. Security & Best Practices
+
+### 8.1 Credential Management
 - **NEVER commit** `.env` file or service account keys
-- Use `.env` or environment variables for all secrets
-- Store sensitive files outside version control
+- Use environment variables for all secrets
+- No audio/transcription logging in production
 - Rotate credentials regularly
 
-### 7.2 Telegram Bot Security
-- Use webhook URLs with random tokens
-- Validate incoming requests
-- Rate limit requests to prevent abuse
-- Validate transcribed input before processing (prevent injection)
+### 8.2 MCP Server Security
+- Require authentication tokens
+- Implement rate limiting (60 calls/minute per client)
+- Validate all inputs
+- Sanitize metadata to prevent injection
+- Log only metadata (no audio content)
 
-### 7.3 Google Cloud Security
-- Use service accounts with minimal permissions
-- Follow principle of least privilege
-- Monitor API usage and costs
+### 8.3 Privacy & Data Protection
+- **Ephemeral processing:** Audio deleted immediately after transcription
+- **No storage:** Transcriptions not stored (only returned as tool response)
+- **Opt-in logging:** Content logging only in debug mode
+- **Secure transport:** Use TLS for MCP connections
 
-### 7.4 Code Quality
-- Use type hints throughout
-- Write docstrings for all functions
-- Keep functions small and focused
-- Follow PEP 8 style guide
+## 9. Deployment & Operations
 
-### 7.5 Privacy & Data Protection
-- **No audio storage** - Ephemeral processing only
-- **No transcription storage** - Processed as input then discarded
-- **Minimal logging** - Metadata only, no content
-- **Automatic cleanup** - All temp files deleted immediately
+### 9.1 Running the MCP Server
 
-## 8. Testing Strategy
+```bash
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
-### 8.1 Unit Tests (70% coverage goal)
-- Test each module independently
-- Mock external dependencies (Telegram, Google Cloud)
-- Test edge cases and error conditions
-- Test audio validation and conversion
-- Test transcription parsing
-- Test input routing and validation
+# Install dependencies
+pip install -r requirements.txt
 
-### 8.2 Integration Tests
-- Test full voice message flow: Voice → Transcription → Response
-- Mock external APIs for testing
-- Performance testing with various audio lengths (1s, 10s, 30s, 60s)
-- Test command parsing from transcribed text
-- Test error handling throughout flow
-- Test security validation
+# Set environment variables
+cp .env.template .env
+# Edit .env with actual credentials
 
-### 8.3 Voice Input Specific Tests (NEW)
-- Test commands spoken naturally
-- Test queries with different accents/intonations
-- Test background noise handling
-- Test multi-turn conversations with voice
-- Test mixed text + voice interactions
+# Run server
+python mcp_server.py
+```
 
-### 8.4 Security Tests (NEW)
-- Validate input sanitization for transcribed text
-- Test injection attack prevention
-- Verify privacy measures (no audio/logging)
-- Test rate limiting
+### 9.2 Client (Agent) Configuration
 
-## 9. Future Enhancements (Out of Scope)
+```python
+# Agent connects to MCP server
+from mcp import Client
 
+client = Client("http://localhost:8765")
+client.connect()
+
+# List available tools
+tools = client.list_tools()
+
+# Invoke transcription tool
+response = client.invoke_tool(
+    "transcribe_audio",
+    {
+        "audio_data": base64_audio,
+        "metadata": {"format": "ogg", "duration": 3.2}
+    }
+)
+
+transcription = response["transcription"]
+```
+
+### 9.3 Docker Deployment (Optional)
+
+```dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+EXPOSE 8765
+
+CMD ["python", "mcp_server.py"]
+```
+
+## 10. Future Enhancements
+
+**Out of Scope:**
 - Support for longer audio (>60 seconds)
+- Batch transcription (multiple audio files)
+- Real-time streaming transcription
 - Speaker diarization
-- Multi-language support
-- Voice activity detection (skip silence)
-- Batch processing of multiple audio files
-- Voice command shortcuts
+- Multi-language support in single audio
+- Audio enhancement/cleanup preprocessing
 
 ---
 
 **Last Updated:** 2026-02-01  
-**Version:** 2.0 (REVISED)  
-**Status:** Ready for Review (with KEY CLARIFICATION incorporated)
+**Version:** 3.0 (MCP SERVER)  
+**Status:** Ready for Implementation  
+**Review:** Updated spec sent via email for your review
