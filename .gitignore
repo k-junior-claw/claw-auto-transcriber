@@ -205,3 +205,44 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# =============================================================================
+# Claw Auto-Transcriber Specific
+# =============================================================================
+
+# Credentials - NEVER commit these
+credentials/
+*.json
+!package.json
+service-account*.json
+*-credentials.json
+
+# Temporary audio files
+/tmp/
+temp_audio/
+*.ogg
+*.flac
+*.wav
+*.mp3
+
+# Local configuration (use .env.template as reference)
+.env
+.env.local
+.env.*.local
+
+# Test fixtures that might contain audio
+tests/fixtures/*.ogg
+tests/fixtures/*.flac
+tests/fixtures/*.mp3
+tests/fixtures/*.wav
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
