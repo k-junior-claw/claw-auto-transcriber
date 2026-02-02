@@ -487,25 +487,176 @@ class Transcriber:
 
 ### Phase 3: Tool Definition & Integration (High Priority)
 
+**Status:** COMPLETED  
 **Duration:** 2-3 days
 
-**Tasks:**
+#### 3.1 Tool Definition Module (`tools/transcribe_audio.py`)
+
+**Responsibilities:**
+- Define transcribe_audio tool JSON schema
+- Validate tool invocation inputs
+- Execute transcription pipeline (audio_processor → transcriber)
+- Format responses with metadata (transcription, confidence, duration)
+- Handle errors with graceful degradation
+
+**Key Classes:**
+
+```python
+@dataclass
+class ToolInput:
+    """Validated input for transcribe_audio tool."""
+    audio_data: bytes          # Decoded audio bytes
+    language_code: str         # BCP-47 language code (e.g., "en-US")
+    original_format: Optional[str]  # Format hint ("ogg", "mp3", etc.)
+    user_id: Optional[str]     # Tracking identifier
+    message_id: Optional[str]  # Message tracking
+
+@dataclass
+class ToolResponse:
+    """Response from transcribe_audio tool."""
+    success: bool
+    transcription: Optional[str]  # Transcribed text
+    confidence: Optional[float]   # 0.0 to 1.0
+    language_code: str
+    duration_seconds: float
+    word_count: int
+    processing_time_ms: float
+    error: Optional[str]         # Error message if failed
+
+class TranscribeAudioTool:
+    """Main tool class for transcribe_audio."""
+    def __init__(self, config, logger)
+    def get_schema() -> dict  # Static method returns JSON schema
+    def validate_input(arguments: dict) -> ToolInput
+    def execute(input: ToolInput) -> ToolResponse
+    def format_response(response: ToolResponse) -> dict
+```
+
+**Key Functions:**
+- `get_tool_schema()` - Return JSON schema for MCP tool registration
+- `validate_input(arguments)` - Validate and parse tool invocation arguments
+- `execute(input)` - Execute transcription pipeline
+- `format_response(response)` - Format response for MCP protocol
+- `format_error_response(error)` - Format error for MCP protocol
+
+**Exception Classes:**
+- `ToolInputError` - Invalid tool input parameters
+- `ToolExecutionError` - Error during tool execution
+
+**Tool Schema Definition:**
+```json
+{
+    "name": "transcribe_audio",
+    "description": "Transcribe audio/voice messages to text using Google Cloud Speech-to-Text",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "audio_data": {
+                "type": "string",
+                "description": "Base64-encoded audio file (OGG, MP3, WAV, or FLAC)"
+            },
+            "metadata": {
+                "type": "object",
+                "properties": {
+                    "original_format": {"type": "string", "enum": ["ogg", "mp3", "wav", "flac"]},
+                    "language_code": {"type": "string"},
+                    "user_id": {"type": "string"},
+                    "message_id": {"type": "string"}
+                }
+            }
+        },
+        "required": ["audio_data"]
+    }
+}
+```
+
+**Response Schema:**
+```json
+{
+    "success": true,
+    "transcription": "What's the weather today?",
+    "confidence": 0.95,
+    "language_code": "en-US",
+    "duration_seconds": 2.5,
+    "word_count": 4,
+    "processing_time_ms": 1250.5,
+    "metadata": {
+        "invocation_id": "inv_abc123",
+        "original_format": "ogg"
+    }
+}
+```
+
+#### 3.2 MCP Server Integration Updates (`src/mcp_server.py`)
+
+**New Responsibilities:**
+- Wire transcribe_audio tool to TranscribeAudioTool class
+- Integrate Transcriber module for actual transcription
+- Return real transcription results (replacing Phase 2 placeholder)
+
+**Updated Handler Flow:**
+```python
+async def _handle_transcribe_audio(arguments, invocation_id):
+    # 1. Validate input using tool module
+    tool_input = TranscribeAudioTool.validate_input(arguments)
+    
+    # 2. Process audio (audio_processor)
+    processed = audio_processor.process_audio(tool_input.audio_data)
+    
+    # 3. Transcribe (transcriber)
+    result = transcriber.transcribe_with_retry(
+        processed.flac_data, 
+        language_code=tool_input.language_code
+    )
+    
+    # 4. Format response
+    return TranscribeAudioTool.format_response(result, processed.metadata)
+```
+
+**Error Handling Strategy:**
+- `AudioValidationError` → Tool returns user-friendly error
+- `AudioDurationError` → Tool returns duration exceeded error
+- `TranscriptionError` → Tool returns transcription failed error
+- `NoSpeechDetectedError` → Tool returns "no speech detected" result (not error)
+
+#### 3.3 Configuration Integration
+
+**Uses existing config values:**
+- `config.audio.default_language` - Default language for transcription
+- `config.audio.max_duration` - Maximum audio duration
+- `config.audio.max_size` - Maximum file size
+- `config.performance.transcription_timeout` - API timeout
+- `config.performance.max_retry_attempts` - Retry count
+
+**Logging Integration:**
+- Uses MCPLogger for all logging
+- Logs metadata: invocation_id, duration, confidence, processing_time
+- NEVER logs audio content or transcription text (privacy)
+
+#### 3.4 Tasks Completed
+
 1. **Tool Definition** (`tools/transcribe_audio.py`)
-   - Define transcribe_audio tool schema
-   - Specify input parameters
-   - Define output/response format
-   - Add input validation
+   - [x] Define ToolInput and ToolResponse dataclasses
+   - [x] Implement TranscribeAudioTool class
+   - [x] Create JSON schema for MCP registration
+   - [x] Implement input validation with proper error handling
+   - [x] Implement execute() with audio_processor → transcriber flow
+   - [x] Implement response formatting (success and error cases)
+   - [x] Handle NoSpeechDetectedError as valid result (not error)
 
-2. **Integrate Tool with MCP Server**
-   - Register tool with MCP server
-   - Implement tool invocation handler
-   - Wire audio processor → transcriber → response
-   - Test tool invocation flow
+2. **MCP Server Integration** (`src/mcp_server.py`)
+   - [x] Import and integrate TranscribeAudioTool
+   - [x] Update _handle_transcribe_audio to call transcriber
+   - [x] Return actual transcription results
+   - [x] Handle transcription errors gracefully
 
-3. **Tool Response Handler**
-   - Format transcription as tool response
-   - Add metadata (confidence, duration, etc.)
-   - Handle errors gracefully
+3. **Test Suite** (`tests/test_tools.py`)
+   - [x] Unit tests for ToolInput validation
+   - [x] Unit tests for ToolResponse formatting
+   - [x] Unit tests for TranscribeAudioTool class
+   - [x] Integration tests with mocked transcriber
+   - [x] Error scenario tests
+   - [x] Test no speech detected handling
 
 ### Phase 4: MCP Server Implementation & Testing
 
@@ -841,6 +992,6 @@ When receiving a new development request, follow this workflow:
 ---
 
 **Last Updated:** 2026-02-02  
-**Version:** 3.1 (MCP SERVER)  
-**Status:** Ready for Implementation  
-**Review:** Updated spec sent via email for your review
+**Version:** 3.2 (MCP SERVER)  
+**Status:** Phase 3 Complete  
+**Review:** Tool Definition & Integration phase completed

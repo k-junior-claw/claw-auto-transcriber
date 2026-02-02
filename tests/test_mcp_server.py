@@ -146,10 +146,21 @@ class TestToolInvocation:
     @pytest.mark.asyncio
     async def test_handle_transcribe_audio_success(self, server, mock_processed_audio):
         """Test successful transcribe_audio invocation."""
+        # Mock both audio_processor and transcriber
+        mock_transcription = MagicMock()
+        mock_transcription.text = "Hello world"
+        mock_transcription.confidence = 0.95
+        mock_transcription.language_code = "en-US"
+        mock_transcription.duration_seconds = 2.5
+        
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             return_value=mock_processed_audio
+        ), patch.object(
+            server.transcribe_tool.transcriber,
+            'transcribe_with_retry',
+            return_value=mock_transcription
         ):
             result = await server._handle_tool_call(
                 TRANSCRIBE_AUDIO_TOOL,
@@ -158,8 +169,9 @@ class TestToolInvocation:
         
         assert len(result) == 1
         response = json.loads(result[0].text)
-        assert response["status"] == "processed"
-        assert response["metadata"]["audio_duration_seconds"] == 2.5
+        assert response["success"] is True
+        assert response["transcription"] == "Hello world"
+        assert response["duration_seconds"] == 2.5
         assert server.state.successful_invocations == 1
     
     @pytest.mark.asyncio
@@ -190,7 +202,7 @@ class TestToolInvocation:
     async def test_handle_validation_error(self, server):
         """Test handling AudioValidationError."""
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             side_effect=AudioValidationError("Invalid audio format")
         ):
@@ -199,14 +211,16 @@ class TestToolInvocation:
                 {"audio_data": "dGVzdA=="}
             )
         
-        assert "Invalid audio" in result[0].text
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "Invalid audio" in response["error"]
         assert server.state.failed_invocations == 1
     
     @pytest.mark.asyncio
     async def test_handle_duration_error(self, server):
         """Test handling AudioDurationError."""
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             side_effect=AudioDurationError("Audio too long: 120s")
         ):
@@ -215,14 +229,16 @@ class TestToolInvocation:
                 {"audio_data": "dGVzdA=="}
             )
         
-        assert "120s" in result[0].text or "too long" in result[0].text.lower()
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "120s" in response["error"] or "too long" in response["error"].lower()
         assert server.state.failed_invocations == 1
     
     @pytest.mark.asyncio
     async def test_handle_size_error(self, server):
         """Test handling AudioSizeError."""
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             side_effect=AudioSizeError("File too large")
         ):
@@ -231,13 +247,15 @@ class TestToolInvocation:
                 {"audio_data": "dGVzdA=="}
             )
         
-        assert "too large" in result[0].text.lower() or "size" in result[0].text.lower()
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "too large" in response["error"].lower() or "size" in response["error"].lower()
     
     @pytest.mark.asyncio
     async def test_handle_format_error(self, server):
         """Test handling AudioFormatError."""
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             side_effect=AudioFormatError("Unsupported format")
         ):
@@ -246,13 +264,15 @@ class TestToolInvocation:
                 {"audio_data": "dGVzdA=="}
             )
         
-        assert "Unsupported format" in result[0].text or "format" in result[0].text.lower()
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "Unsupported format" in response["error"] or "format" in response["error"].lower()
     
     @pytest.mark.asyncio
     async def test_handle_conversion_error(self, server):
         """Test handling AudioConversionError."""
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             side_effect=AudioConversionError("FFmpeg error")
         ):
@@ -261,13 +281,15 @@ class TestToolInvocation:
                 {"audio_data": "dGVzdA=="}
             )
         
-        assert "Failed to process" in result[0].text
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "process" in response["error"].lower()
     
     @pytest.mark.asyncio
     async def test_handle_generic_processing_error(self, server):
         """Test handling generic AudioProcessingError."""
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             side_effect=AudioProcessingError("Generic error")
         ):
@@ -276,13 +298,15 @@ class TestToolInvocation:
                 {"audio_data": "dGVzdA=="}
             )
         
-        assert "processing failed" in result[0].text.lower()
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "processing" in response["error"].lower() or "failed" in response["error"].lower()
     
     @pytest.mark.asyncio
     async def test_handle_unexpected_error(self, server):
         """Test handling unexpected exceptions."""
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             side_effect=RuntimeError("Unexpected!")
         ):
@@ -291,15 +315,28 @@ class TestToolInvocation:
                 {"audio_data": "dGVzdA=="}
             )
         
-        assert "unexpected error" in result[0].text.lower()
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "unexpected" in response["error"].lower()
     
     @pytest.mark.asyncio
     async def test_invocation_with_metadata(self, server, mock_processed_audio):
         """Test invocation with metadata."""
+        # Mock both audio_processor and transcriber
+        mock_transcription = MagicMock()
+        mock_transcription.text = "Hola mundo"
+        mock_transcription.confidence = 0.92
+        mock_transcription.language_code = "es-ES"
+        mock_transcription.duration_seconds = 2.5
+        
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             return_value=mock_processed_audio
+        ), patch.object(
+            server.transcribe_tool.transcriber,
+            'transcribe_with_retry',
+            return_value=mock_transcription
         ):
             result = await server._handle_tool_call(
                 TRANSCRIBE_AUDIO_TOOL,
@@ -314,7 +351,9 @@ class TestToolInvocation:
             )
         
         response = json.loads(result[0].text)
-        assert response["metadata"]["language_code"] == "es-ES"
+        assert response["success"] is True
+        assert response["language_code"] == "es-ES"
+        assert response["transcription"] == "Hola mundo"
 
 
 class TestServerLifecycle:
@@ -408,10 +447,20 @@ class TestStateTracking:
         """Test that invocation count increments."""
         initial = server.state.total_invocations
         
+        mock_transcription = MagicMock()
+        mock_transcription.text = "Hello"
+        mock_transcription.confidence = 0.95
+        mock_transcription.language_code = "en-US"
+        mock_transcription.duration_seconds = 2.0
+        
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             return_value=mock_processed_audio
+        ), patch.object(
+            server.transcribe_tool.transcriber,
+            'transcribe_with_retry',
+            return_value=mock_transcription
         ):
             await server._handle_tool_call(
                 TRANSCRIBE_AUDIO_TOOL,
@@ -425,10 +474,20 @@ class TestStateTracking:
         """Test that success count increments on success."""
         initial = server.state.successful_invocations
         
+        mock_transcription = MagicMock()
+        mock_transcription.text = "Hello"
+        mock_transcription.confidence = 0.95
+        mock_transcription.language_code = "en-US"
+        mock_transcription.duration_seconds = 2.0
+        
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             return_value=mock_processed_audio
+        ), patch.object(
+            server.transcribe_tool.transcriber,
+            'transcribe_with_retry',
+            return_value=mock_transcription
         ):
             await server._handle_tool_call(
                 TRANSCRIBE_AUDIO_TOOL,
@@ -443,7 +502,7 @@ class TestStateTracking:
         initial = server.state.failed_invocations
         
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             side_effect=AudioValidationError("Error")
         ):
@@ -524,10 +583,20 @@ class TestPrivacyCompliance:
     @pytest.mark.asyncio
     async def test_response_does_not_include_audio(self, server, mock_processed_audio):
         """Test that response doesn't include raw audio data."""
+        mock_transcription = MagicMock()
+        mock_transcription.text = "Transcription text"
+        mock_transcription.confidence = 0.95
+        mock_transcription.language_code = "en-US"
+        mock_transcription.duration_seconds = 2.0
+        
         with patch.object(
-            server.audio_processor,
+            server.transcribe_tool.audio_processor,
             'process_audio',
             return_value=mock_processed_audio
+        ), patch.object(
+            server.transcribe_tool.transcriber,
+            'transcribe_with_retry',
+            return_value=mock_transcription
         ):
             result = await server._handle_tool_call(
                 TRANSCRIBE_AUDIO_TOOL,

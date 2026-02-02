@@ -64,6 +64,21 @@ from src.audio_processor import (
     AudioFormatError,
     cleanup_temp_files,
 )
+from src.transcriber import (
+    Transcriber,
+    TranscriptionResult,
+    TranscriptionError,
+    TranscriptionAPIError,
+    TranscriptionTimeoutError,
+    TranscriptionQuotaError,
+    NoSpeechDetectedError,
+)
+from tools.transcribe_audio import (
+    TranscribeAudioTool,
+    ToolInput,
+    ToolResponse,
+    ToolInputError,
+)
 
 
 # Tool name constant
@@ -126,7 +141,8 @@ class MCPTranscriptionServer:
         self._config = config
         self._logger = logger or get_logger("mcp_server")
         self._audio_processor: Optional[AudioProcessor] = None
-        self._transcriber = None  # Will be set in Phase 2
+        self._transcriber: Optional[Transcriber] = None
+        self._transcribe_tool: Optional[TranscribeAudioTool] = None
         
         # Initialize state
         self.state = ServerState(
@@ -163,6 +179,28 @@ class MCPTranscriptionServer:
                 logger=self._logger.with_context(component="audio_processor")
             )
         return self._audio_processor
+    
+    @property
+    def transcriber(self) -> Transcriber:
+        """Get or create the transcriber."""
+        if self._transcriber is None:
+            self._transcriber = Transcriber(
+                config=self.config,
+                logger=self._logger.with_context(component="transcriber")
+            )
+        return self._transcriber
+    
+    @property
+    def transcribe_tool(self) -> TranscribeAudioTool:
+        """Get or create the transcribe audio tool."""
+        if self._transcribe_tool is None:
+            self._transcribe_tool = TranscribeAudioTool(
+                config=self.config,
+                logger=self._logger.with_context(component="transcribe_tool"),
+                audio_processor=self.audio_processor,
+                transcriber=self.transcriber
+            )
+        return self._transcribe_tool
     
     def _register_handlers(self) -> None:
         """Register MCP protocol handlers."""
@@ -268,8 +306,9 @@ class MCPTranscriptionServer:
         
         try:
             if name == TRANSCRIBE_AUDIO_TOOL:
+                # Note: success/failure tracking is done inside _handle_transcribe_audio
+                # based on the tool response's success flag
                 result = await self._handle_transcribe_audio(arguments, invocation_id)
-                self.state.successful_invocations += 1
                 return result
             else:
                 # Don't increment failed_invocations here - the exception handler will do it
@@ -347,6 +386,66 @@ class MCPTranscriptionServer:
                 text=f"Error: Audio processing failed - {str(e)}"
             )]
             
+        except ToolInputError as e:
+            self.state.failed_invocations += 1
+            self._logger.error(
+                "Tool input validation failed",
+                invocation_id=invocation_id,
+                error_type="input_validation"
+            )
+            return [TextContent(
+                type="text",
+                text=f"Error: Invalid input - {str(e)}"
+            )]
+            
+        except TranscriptionTimeoutError as e:
+            self.state.failed_invocations += 1
+            self._logger.error(
+                "Transcription timed out",
+                invocation_id=invocation_id,
+                error_type="timeout"
+            )
+            return [TextContent(
+                type="text",
+                text="Error: Transcription request timed out. Please try again."
+            )]
+            
+        except TranscriptionQuotaError as e:
+            self.state.failed_invocations += 1
+            self._logger.error(
+                "Transcription quota exceeded",
+                invocation_id=invocation_id,
+                error_type="quota"
+            )
+            return [TextContent(
+                type="text",
+                text="Error: Transcription service quota exceeded. Please try again later."
+            )]
+            
+        except TranscriptionAPIError as e:
+            self.state.failed_invocations += 1
+            self._logger.error(
+                "Transcription API error",
+                invocation_id=invocation_id,
+                error_type="api"
+            )
+            return [TextContent(
+                type="text",
+                text="Error: Transcription service error. Please try again."
+            )]
+            
+        except TranscriptionError as e:
+            self.state.failed_invocations += 1
+            self._logger.error(
+                "Transcription failed",
+                invocation_id=invocation_id,
+                error_type="transcription"
+            )
+            return [TextContent(
+                type="text",
+                text=f"Error: Transcription failed - {str(e)}"
+            )]
+            
         except Exception as e:
             self.state.failed_invocations += 1
             self._logger.exception(
@@ -374,73 +473,30 @@ class MCPTranscriptionServer:
             Sequence of TextContent with transcription result
         """
         import json
-        import time
         
-        start_time = time.perf_counter()
+        # Validate input using the tool
+        tool_input = self.transcribe_tool.validate_input(arguments)
         
-        # Validate required arguments
-        if "audio_data" not in arguments:
-            raise AudioValidationError("Missing required parameter: audio_data")
+        # Execute transcription pipeline
+        response = self.transcribe_tool.execute(tool_input, invocation_id=invocation_id)
         
-        audio_data = arguments["audio_data"]
-        metadata = arguments.get("metadata", {})
+        # Track success/failure based on tool response
+        if response.success:
+            self.state.successful_invocations += 1
+        else:
+            self.state.failed_invocations += 1
         
-        # Extract format hint from metadata
-        expected_format = metadata.get("original_format")
-        language_code = metadata.get("language_code", self.config.audio.default_language)
-        
-        # Process audio
-        with self._logger.timed_operation("audio_processing", invocation_id=invocation_id):
-            processed = self.audio_processor.process_audio(
-                audio_data=audio_data,
-                expected_format=expected_format,
-                is_base64=True
-            )
-        
-        # Log processing metadata (NOT content)
-        self._logger.info(
-            "Audio processed successfully",
-            invocation_id=invocation_id,
-            duration_seconds=processed.metadata.duration_seconds,
-            original_format=processed.original_format,
-            flac_size_bytes=len(processed.flac_data)
-        )
-        
-        # TODO: Phase 2 - Call Google STT here
-        # For now, return a placeholder response indicating audio was processed
-        # The transcriber module will be integrated in Phase 2
-        
-        processing_time_ms = (time.perf_counter() - start_time) * 1000
-        
-        # Build response
-        response = {
-            "status": "processed",
-            "message": (
-                "Audio validated and converted to FLAC. "
-                "Transcription will be available after Phase 2 (Google STT integration)."
-            ),
-            "metadata": {
-                "invocation_id": invocation_id,
-                "audio_duration_seconds": round(processed.metadata.duration_seconds, 2),
-                "original_format": processed.original_format,
-                "processing_time_ms": round(processing_time_ms, 2),
-                "language_code": language_code,
-            },
-            # Placeholder for actual transcription
-            "transcription": None,
-            "confidence": None,
-        }
-        
+        # Log response metadata (NOT transcription content)
         self._logger.log_tool_response(
             tool_name=TRANSCRIBE_AUDIO_TOOL,
             invocation_id=invocation_id,
-            success=True,
-            duration_ms=processing_time_ms
+            success=response.success,
+            duration_ms=response.processing_time_ms
         )
         
         return [TextContent(
             type="text",
-            text=json.dumps(response, indent=2)
+            text=json.dumps(response.to_dict(), indent=2)
         )]
     
     async def start(self) -> None:

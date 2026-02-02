@@ -13,9 +13,36 @@ Available tools:
 
 from typing import List
 
+from tools.transcribe_audio import (
+    TranscribeAudioTool,
+    ToolInput,
+    ToolResponse,
+    ToolInputError,
+    ToolExecutionError,
+    get_tool_schema,
+    validate_tool_input,
+    TOOL_NAME,
+    TOOL_DESCRIPTION,
+)
+
 # List of available tool names
 AVAILABLE_TOOLS: List[str] = [
     "transcribe_audio",
 ]
 
-__all__ = ["AVAILABLE_TOOLS"]
+__all__ = [
+    # Tool class and data types
+    "TranscribeAudioTool",
+    "ToolInput",
+    "ToolResponse",
+    # Exceptions
+    "ToolInputError",
+    "ToolExecutionError",
+    # Functions
+    "get_tool_schema",
+    "validate_tool_input",
+    # Constants
+    "TOOL_NAME",
+    "TOOL_DESCRIPTION",
+    "AVAILABLE_TOOLS",
+]
