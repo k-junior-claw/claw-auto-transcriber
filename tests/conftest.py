@@ -30,11 +30,16 @@ def reset_global_state():
     import src.audio_processor as audio_module
     audio_module._processor = None
     
+    # Reset transcriber singleton
+    import src.transcriber as transcriber_module
+    transcriber_module._transcriber = None
+    
     yield
     
     # Cleanup after test
     config_module._config = None
     audio_module._processor = None
+    transcriber_module._transcriber = None
 
 
 @pytest.fixture
@@ -120,6 +125,46 @@ def mock_google_credentials(temp_dir):
     creds_file.write_text(json.dumps(creds_data))
     
     return creds_file
+
+
+@pytest.fixture
+def mock_speech_response():
+    """Provide a factory for creating mock Google Cloud Speech responses."""
+    def _create_response(transcript: str, confidence: float = 0.95, words: list = None):
+        mock_alternative = MagicMock()
+        mock_alternative.transcript = transcript
+        mock_alternative.confidence = confidence
+        
+        if words:
+            mock_words = []
+            for w in words:
+                mock_word = MagicMock()
+                mock_word.word = w.get("word", "word")
+                mock_word.start_time.total_seconds.return_value = w.get("start", 0.0)
+                mock_word.end_time.total_seconds.return_value = w.get("end", 0.1)
+                mock_word.confidence = w.get("confidence", 0.9)
+                mock_words.append(mock_word)
+            mock_alternative.words = mock_words
+        else:
+            mock_alternative.words = []
+        
+        mock_result = MagicMock()
+        mock_result.alternatives = [mock_alternative]
+        
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        
+        return mock_response
+    
+    return _create_response
+
+
+@pytest.fixture
+def mock_empty_speech_response():
+    """Provide an empty Google Cloud Speech response (no speech detected)."""
+    mock_response = MagicMock()
+    mock_response.results = []
+    return mock_response
 
 
 # Markers for different test categories

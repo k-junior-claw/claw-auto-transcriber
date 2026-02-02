@@ -8,6 +8,7 @@ Modules:
     config: Configuration management
     logger: Structured logging utilities
     audio_processor: Audio validation and conversion
+    transcriber: Google Cloud Speech-to-Text integration
     mcp_server: MCP server implementation
 """
 
@@ -30,6 +31,18 @@ from src.audio_processor import (
     AudioValidationError,
     process_audio,
     validate_audio,
+)
+from src.transcriber import (
+    Transcriber,
+    TranscriptionResult,
+    TranscriptionError,
+    TranscriptionAPIError,
+    TranscriptionTimeoutError,
+    TranscriptionQuotaError,
+    NoSpeechDetectedError,
+    get_transcriber,
+    transcribe,
+    transcribe_with_retry,
 )
 from src.mcp_server import (
     MCPTranscriptionServer,
@@ -57,6 +70,17 @@ __all__ = [
     "AudioValidationError",
     "process_audio",
     "validate_audio",
+    # Transcriber
+    "Transcriber",
+    "TranscriptionResult",
+    "TranscriptionError",
+    "TranscriptionAPIError",
+    "TranscriptionTimeoutError",
+    "TranscriptionQuotaError",
+    "NoSpeechDetectedError",
+    "get_transcriber",
+    "transcribe",
+    "transcribe_with_retry",
     # MCP Server
     "MCPTranscriptionServer",
     "create_server",
