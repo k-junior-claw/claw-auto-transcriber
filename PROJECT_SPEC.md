@@ -560,28 +560,36 @@ claw-auto-transcriber/
 ├── .env.template                          # Environment variables template
 ├── .gitignore                            # Git ignore patterns
 ├── requirements.txt                      # Python dependencies (including mcp SDK)
+├── pyproject.toml                        # Project configuration and build settings
 ├── README.md                             # Project overview (MCP server)
-├── PROJECT_SPEC.md                       # This specification (v3.0)
-├── mcp_server.py                         # **NEW: MCP server implementation**
+├── PROJECT_SPEC.md                       # This specification (v3.1)
+├── TASK_TRACKER.md                       # Implementation task tracker
+├── src/                                  # **Source code directory**
+│   ├── __init__.py                       # Package initialization
+│   ├── mcp_server.py                     # MCP server implementation
+│   ├── audio_processor.py                # Audio handling
+│   ├── transcriber.py                    # Google STT integration (Phase 2)
+│   ├── config.py                         # Configuration management
+│   └── logger.py                         # Logging utilities
 ├── tools/
 │   ├── __init__.py
-│   └── transcribe_audio.py               # **NEW: Tool definition**
-├── audio_processor.py                    # Audio handling
-├── transcriber.py                        # Google STT integration
-├── config.py                             # Configuration management
-├── logger.py                             # Logging utilities
+│   └── transcribe_audio.py               # Tool definition (Phase 3)
 ├── tests/
 │   ├── __init__.py
-│   ├── test_mcp_server.py                # **NEW: MCP server tests**
-│   ├── test_transcribe_tool.py           # **NEW: Tool invocation tests**
-│   ├── test_audio_processor.py
-│   ├── test_transcriber.py
+│   ├── conftest.py                       # Pytest configuration and fixtures
+│   ├── test_mcp_server.py                # MCP server tests
+│   ├── test_audio_processor.py           # Audio processor tests
+│   ├── test_config.py                    # Configuration tests
+│   ├── test_logger.py                    # Logger tests
 │   └── fixtures/                         # Test audio files (sample OGGs)
+│       └── .gitkeep
 └── docs/
     ├── setup.md                          # Setup instructions
-    ├── mcp_usage.md                      # **NEW: MCP usage guide**
-    └── tool_reference.md                 # **NEW: Tool API reference**
+    ├── mcp_usage.md                      # MCP usage guide
+    └── tool_reference.md                 # Tool API reference
 ```
+
+**Note:** All Python source modules are located in the `src/` directory. Imports should use the `src.` prefix (e.g., `from src.config import Config`).
 
 ## 7. Testing Strategy (80% Coverage with pytest)
 
@@ -685,7 +693,59 @@ EXPOSE 8765
 CMD ["python", "mcp_server.py"]
 ```
 
-## 10. Future Enhancements
+## 10. Development Workflow
+
+This section describes the standard workflow for making changes to the codebase.
+
+### 10.1 New Development Request Process
+
+When receiving a new development request, follow this workflow:
+
+1. **Update Specification First**
+   - Review and understand the request
+   - Update this PROJECT_SPEC.md document following existing conventions
+   - Document new components, data structures, or API changes
+   - Update relevant sections (Components, Data Design, etc.)
+
+2. **Create Implementation Plan**
+   - Break down the change into discrete tasks
+   - Update TASK_TRACKER.md with new tasks
+   - Identify dependencies between tasks
+   - Estimate complexity and order of implementation
+
+3. **Implement Changes**
+   - Follow the module design patterns established in Section 1
+   - Maintain privacy requirements (no audio content logging)
+   - Use existing configuration and logging infrastructure
+   - Follow MCP protocol compliance guidelines
+
+4. **Write Tests**
+   - Write unit tests for new functionality (target 80% coverage)
+   - Write integration tests for component interactions
+   - Mock external dependencies (Google Cloud, etc.)
+   - Follow existing test patterns in `tests/` directory
+
+5. **Verify All Tests Pass**
+   - Run the full test suite: `pytest tests/ -v`
+   - Ensure no regressions in existing functionality
+   - Verify coverage targets are met: `pytest --cov=src tests/`
+   - Fix any failing tests before considering work complete
+
+### 10.2 Code Quality Standards
+
+- **Type Hints**: Use type hints for all function signatures
+- **Docstrings**: Google-style docstrings for all public functions
+- **Error Handling**: Use custom exception classes from respective modules
+- **Logging**: Use MCPLogger for all logging (never log sensitive data)
+- **Testing**: Minimum 80% code coverage for new code
+
+### 10.3 Commit Guidelines
+
+- Make atomic commits with clear messages
+- Reference task IDs when applicable
+- Ensure tests pass before committing
+
+## 11. Future Enhancements
 
 **Out of Scope:**
 - Support for longer audio (>60 seconds)
@@ -697,7 +757,7 @@ CMD ["python", "mcp_server.py"]
 
 ---
 
-**Last Updated:** 2026-02-01  
-**Version:** 3.0 (MCP SERVER)  
+**Last Updated:** 2026-02-02  
+**Version:** 3.1 (MCP SERVER)  
 **Status:** Ready for Implementation  
 **Review:** Updated spec sent via email for your review

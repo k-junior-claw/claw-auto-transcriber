@@ -19,14 +19,14 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
 
-from mcp_server import (
+from src.mcp_server import (
     MCPTranscriptionServer,
     ServerState,
     TRANSCRIBE_AUDIO_TOOL,
     create_server,
     run_server,
 )
-from audio_processor import (
+from src.audio_processor import (
     ProcessedAudio,
     AudioMetadata,
     AudioValidationError,
@@ -36,7 +36,7 @@ from audio_processor import (
     AudioFormatError,
     AudioProcessingError,
 )
-from config import Config
+from src.config import Config
 
 
 class TestServerState:

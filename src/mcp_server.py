@@ -44,8 +44,8 @@ from mcp.types import (
     INTERNAL_ERROR,
 )
 
-from config import Config, init_config, get_config, ConfigurationError, CredentialError
-from logger import (
+from src.config import Config, init_config, get_config, ConfigurationError, CredentialError
+from src.logger import (
     get_logger,
     MCPLogger,
     configure_root_logger,
@@ -54,7 +54,7 @@ from logger import (
     LogLevel,
     LogFormat,
 )
-from audio_processor import (
+from src.audio_processor import (
     AudioProcessor,
     AudioProcessingError,
     AudioValidationError,

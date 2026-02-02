@@ -28,8 +28,8 @@ import struct
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
-from config import get_config, Config
-from logger import get_logger, MCPLogger
+from src.config import get_config, Config
+from src.logger import get_logger, MCPLogger
 
 
 # Audio format signatures (magic bytes)

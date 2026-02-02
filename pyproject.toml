@@ -37,7 +37,7 @@ dev = [
 ]
 
 [project.scripts]
-claw-transcriber = "mcp_server:main"
+claw-transcriber = "src.mcp_server:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -64,7 +64,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["."]
+source = ["src"]
 omit = [
     "tests/*",
     "venv/*",

@@ -17,7 +17,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from config import (
+from src.config import (
     Config,
     ConfigurationError,
     CredentialError,
@@ -368,7 +368,7 @@ class TestGlobalConfig:
         """Test get_config creates an instance."""
         with patch.dict(os.environ, {}, clear=True):
             # Clear any cached config
-            import config as config_module
+            import src.config as config_module
             config_module._config = None
             
             result = get_config()
@@ -378,7 +378,7 @@ class TestGlobalConfig:
     
     def test_get_config_returns_cached(self):
         """Test get_config returns cached instance."""
-        import config as config_module
+        import src.config as config_module
         config_module._config = None
         
         config1 = get_config()
@@ -388,7 +388,7 @@ class TestGlobalConfig:
     
     def test_get_config_reload(self):
         """Test get_config with reload."""
-        import config as config_module
+        import src.config as config_module
         config_module._config = None
         
         config1 = get_config()
@@ -398,7 +398,7 @@ class TestGlobalConfig:
     
     def test_init_config(self, tmp_path):
         """Test init_config function."""
-        import config as config_module
+        import src.config as config_module
         config_module._config = None
         
         result = init_config(validate_credentials=False)

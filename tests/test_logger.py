@@ -16,7 +16,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from logger import (
+from src.logger import (
     MCPLogger,
     LogContext,
     PerformanceMetrics,
@@ -30,7 +30,7 @@ from logger import (
     StructuredTextFormatter,
     SENSITIVE_FIELDS,
 )
-from config import LogLevel, LogFormat
+from src.config import LogLevel, LogFormat
 
 
 class TestSanitizeForLogging:

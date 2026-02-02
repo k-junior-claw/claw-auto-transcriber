@@ -23,11 +23,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 def reset_global_state():
     """Reset global state between tests."""
     # Reset config singleton
-    import config as config_module
+    import src.config as config_module
     config_module._config = None
     
     # Reset audio processor singleton
-    import audio_processor as audio_module
+    import src.audio_processor as audio_module
     audio_module._processor = None
     
     yield

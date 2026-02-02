@@ -23,7 +23,7 @@ from unittest.mock import patch, MagicMock, PropertyMock
 
 import pytest
 
-from audio_processor import (
+from src.audio_processor import (
     AudioProcessor,
     AudioMetadata,
     ProcessedAudio,
@@ -41,7 +41,7 @@ from audio_processor import (
     validate_audio,
     cleanup_temp_files,
 )
-from config import Config
+from src.config import Config
 
 
 class TestAudioSignatures:
@@ -327,13 +327,13 @@ class TestAudioProcessor:
         assert result.channels == 2
         assert result.size_bytes == 45000
     
-    @patch('audio_processor.AudioSegment')
+    @patch('src.audio_processor.AudioSegment')
     def test_process_audio_invalid_base64(self, mock_audio_segment, processor):
         """Test processing with invalid base64."""
         with pytest.raises(AudioValidationError, match="Invalid base64"):
             processor.process_audio("not_valid_base64!!!", is_base64=True)
     
-    @patch('audio_processor.AudioSegment')
+    @patch('src.audio_processor.AudioSegment')
     def test_process_audio_base64_bytes_error(self, mock_audio_segment, processor):
         """Test that passing bytes when base64 expected raises error."""
         with pytest.raises(AudioValidationError, match="Expected base64 string"):
@@ -358,7 +358,7 @@ class TestAudioProcessorIntegration:
     @pytest.fixture
     def mock_audio_segment(self):
         """Create a mock AudioSegment class."""
-        with patch('audio_processor.AudioSegment') as mock_class:
+        with patch('src.audio_processor.AudioSegment') as mock_class:
             mock_segment = MagicMock()
             mock_segment.__len__ = MagicMock(return_value=2000)  # 2 seconds
             mock_segment.frame_rate = 48000
@@ -397,7 +397,7 @@ class TestModuleFunctions:
     
     def test_get_audio_processor_singleton(self):
         """Test that get_audio_processor returns same instance."""
-        import audio_processor as module
+        import src.audio_processor as module
         module._processor = None  # Reset
         
         p1 = get_audio_processor()
@@ -407,7 +407,7 @@ class TestModuleFunctions:
     
     def test_validate_audio_function(self, tmp_path):
         """Test module-level validate_audio function."""
-        import audio_processor as module
+        import src.audio_processor as module
         
         config = Config()
         config.load(validate_credentials=False)
@@ -422,7 +422,7 @@ class TestModuleFunctions:
     
     def test_cleanup_temp_files_function(self):
         """Test module-level cleanup function."""
-        import audio_processor as module
+        import src.audio_processor as module
         
         mock_processor = MagicMock()
         module._processor = mock_processor
@@ -433,7 +433,7 @@ class TestModuleFunctions:
     
     def test_cleanup_temp_files_no_processor(self):
         """Test cleanup when no processor exists."""
-        import audio_processor as module
+        import src.audio_processor as module
         module._processor = None
         
         # Should not raise

@@ -22,7 +22,7 @@ from functools import wraps
 from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
 
-from config import LogLevel, LogFormat, get_config
+from src.config import LogLevel, LogFormat, get_config
 
 
 # Privacy-sensitive fields that should NEVER be logged
