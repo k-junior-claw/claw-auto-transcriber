@@ -660,30 +660,66 @@ async def _handle_transcribe_audio(arguments, invocation_id):
 
 ### Phase 4: MCP Server Implementation & Testing
 
+**Status:** IN PROGRESS  
 **Duration:** 3-4 days
+
+#### 4.1 MCP Protocol Implementation
 
 **Tasks:**
 1. **Implement MCP Protocol**
-   - Tool discovery endpoint
-   - Tool invocation handling
-   - Error response formatting
-   - Connection management
+   - [x] Tool discovery endpoint (`@server.list_tools()` decorator)
+   - [x] Tool invocation handling (`@server.call_tool()` decorator)
+   - [x] Error response formatting (comprehensive exception → TextContent mapping)
+   - [x] Connection management (stdio transport via `stdio_server()`)
+   - [ ] TCP transport support (optional, spec mentions both STDIO and TCP)
 
 2. **Server Lifecycle Management**
-   - Server start/stop
-   - Graceful shutdown
-   - Signal handling
+   - [x] Server start/stop (`start()` and `stop()` methods)
+   - [x] Graceful shutdown (cleanup in finally block)
+   - [x] Signal handling (SIGINT and SIGTERM handlers)
+   - [x] State tracking (`ServerState` dataclass with metrics)
+   - [x] Resource cleanup (audio processor temp files)
 
-3. **Testing**
-   - Unit tests (80% coverage with pytest)
-   - Integration tests (MCP tool flow)
-   - Mock Google Cloud STT
-   - Test various audio formats/sizes
+#### 4.2 Testing Requirements
 
-4. **Security Testing**
-   - Input validation
-   - Rate limiting
-   - No audio/logging in production
+**Tasks:**
+1. **Unit Tests** (80% coverage with pytest)
+   - [x] MCP Server tests (`test_mcp_server.py` - 45+ tests)
+   - [x] Tool tests (`test_tools.py` - 50+ tests)
+   - [x] Audio processor tests (`test_audio_processor.py`)
+   - [x] Transcriber tests (`test_transcriber.py`)
+   - [x] Config tests (`test_config.py`)
+   - [x] Logger tests (`test_logger.py`)
+
+2. **Integration Tests**
+   - [ ] End-to-end MCP tool invocation flow (`test_integration.py`)
+   - [ ] Full pipeline tests (audio → process → transcribe → response)
+   - [ ] Error propagation through full pipeline
+   - [ ] Concurrent tool invocations simulation
+
+3. **Format & Edge Case Tests**
+   - [x] Mock Google Cloud STT
+   - [x] Basic audio format tests (OGG, MP3, WAV, FLAC headers)
+   - [ ] Additional format edge cases (corrupted headers, minimal valid files)
+   - [x] Duration/size boundary tests
+
+#### 4.3 Security Testing
+
+**Tasks:**
+1. **Input Validation Security**
+   - [x] Basic input validation (missing params, invalid types)
+   - [x] Invalid base64 handling
+   - [ ] Malicious input tests (SQL injection patterns, XSS patterns)
+   - [ ] Oversized input handling
+   - [ ] Special character handling in metadata
+
+2. **Privacy Compliance**
+   - [x] No audio content in logs (privacy tests exist)
+   - [x] No transcription in logs (verified in tests)
+   - [x] Ephemeral processing (cleanup tests)
+
+3. **Rate Limiting** (Optional)
+   - [ ] Not implemented - considered optional for v1.0
 
 ### Phase 5: Documentation & Deployment
 
@@ -992,6 +1028,6 @@ When receiving a new development request, follow this workflow:
 ---
 
 **Last Updated:** 2026-02-02  
-**Version:** 3.2 (MCP SERVER)  
-**Status:** Phase 3 Complete  
-**Review:** Tool Definition & Integration phase completed
+**Version:** 3.3 (MCP SERVER)  
+**Status:** Phase 4 In Progress  
+**Review:** MCP Server core implementation complete, integration and security tests needed

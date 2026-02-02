@@ -163,6 +163,128 @@ This document outlines the implementation plan for the Tool Definition & Integra
 
 ---
 
+---
+
+# Phase 4: MCP Server Implementation & Testing - Implementation Plan
+
+## Overview
+
+This document outlines the implementation plan for Phase 4 of the Claw Auto-Transcriber MCP Server. This phase focuses on completing integration tests, adding security tests, and ensuring comprehensive test coverage.
+
+## 1. Current State Analysis
+
+### Already Implemented (from Phase 1-3)
+
+#### MCP Protocol
+- ✅ Tool discovery (`@server.list_tools()` decorator)
+- ✅ Tool invocation handling (`@server.call_tool()` decorator)
+- ✅ Error response formatting (exception → TextContent mapping)
+- ✅ Connection management (stdio transport)
+
+#### Server Lifecycle
+- ✅ Server start/stop methods
+- ✅ Graceful shutdown with cleanup
+- ✅ Signal handling (SIGINT, SIGTERM)
+- ✅ State tracking (ServerState dataclass)
+
+#### Unit Tests
+- ✅ 231 existing tests across all modules
+- ✅ Comprehensive mocking of external dependencies
+
+### Missing (Phase 4 Tasks)
+
+1. **Integration Tests** - End-to-end MCP flow tests
+2. **Security Tests** - Malicious input, edge cases
+3. **Additional Format Tests** - Edge case audio formats
+
+## 2. Implementation Steps
+
+### Step 1: Create `tests/test_integration.py`
+
+1. **End-to-End MCP Flow Tests**
+   - Full tool invocation cycle (arguments → validate → process → transcribe → response)
+   - Test with realistic base64-encoded audio data
+   - Verify response structure matches MCP protocol expectations
+
+2. **Pipeline Integration Tests**
+   - Audio processing → transcription → formatting flow
+   - Error propagation through full pipeline
+   - Resource cleanup verification after invocation
+
+3. **Concurrent Invocation Tests**
+   - Multiple simultaneous tool calls
+   - State tracking accuracy under load
+   - No resource leaks between invocations
+
+4. **Server Lifecycle Integration**
+   - Start → handle requests → stop flow
+   - Graceful shutdown during active processing
+   - State persistence across invocations
+
+### Step 2: Add Security Tests
+
+1. **Input Validation Security** (in `test_integration.py` or `test_mcp_server.py`)
+   - Malicious patterns in metadata (SQL injection, XSS)
+   - Extremely large base64 strings
+   - Special characters and Unicode in user_id/message_id
+   - Null bytes and control characters
+
+2. **Boundary Condition Tests**
+   - Audio at exact max duration limit
+   - Audio at exact max size limit
+   - Empty audio after base64 decode
+   - Minimum valid audio (shortest possible)
+
+### Step 3: Verify All Tests Pass
+
+1. Run full test suite: `pytest tests/ -v`
+2. Verify 80%+ coverage: `pytest --cov=src tests/`
+3. Fix any regressions
+
+## 3. Files to Create/Modify
+
+### Create
+- `tests/test_integration.py` - Integration and end-to-end tests
+
+### Modify
+- `tests/test_mcp_server.py` - Add security-focused tests (if needed)
+- `PROJECT_SPEC.md` - Update Phase 4 completion status (DONE when complete)
+
+## 4. Test Categories
+
+### Integration Tests (test_integration.py)
+1. `TestMCPToolFlow` - Full tool invocation cycle
+2. `TestPipelineIntegration` - Audio → transcription flow
+3. `TestConcurrentInvocations` - Parallel request handling
+4. `TestServerLifecycleIntegration` - Start/stop with requests
+
+### Security Tests
+1. `TestInputSanitization` - Malicious input handling
+2. `TestBoundaryConditions` - Edge case values
+3. `TestResourceLimits` - Size/duration limits enforcement
+
+## 5. Design Decisions
+
+### Integration Test Approach
+- **Mocked External Services** - Google Cloud STT always mocked
+- **Real Internal Flow** - Actual AudioProcessor and Transcriber classes
+- **Realistic Test Data** - Base64-encoded data similar to production
+
+### Security Test Approach
+- **Defense in Depth** - Test validation at multiple layers
+- **No Secrets in Tests** - Use dummy/placeholder values
+- **Privacy Preserved** - Never log actual test audio
+
+## 6. Implementation Order
+
+1. [ ] Create `tests/test_integration.py` with MCP flow tests
+2. [ ] Add security-focused tests
+3. [ ] Run full test suite
+4. [ ] Verify 80%+ coverage
+5. [ ] Update PROJECT_SPEC.md status
+
+---
+
 # Phase 2: Google STT Integration - Implementation Plan (COMPLETED)
 
 ## Overview
