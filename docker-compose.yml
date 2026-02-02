@@ -1,0 +1,101 @@
+# Claw Auto-Transcriber - Docker Compose Configuration
+# 
+# Usage:
+#   1. Copy .env.template to .env and configure
+#   2. Place Google Cloud credentials in ./credentials/
+#   3. Run: docker-compose up -d
+#
+# For MCP clients that need to connect via stdio:
+#   docker-compose run --rm claw-transcriber
+
+version: "3.9"
+
+services:
+  claw-transcriber:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claw-transcriber:latest
+    container_name: claw-transcriber
+    
+    # MCP server uses stdio - run interactively
+    stdin_open: true
+    tty: true
+    
+    environment:
+      # Google Cloud (required)
+      - GOOGLE_CLOUD_PROJECT_ID=${GOOGLE_CLOUD_PROJECT_ID}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      
+      # MCP Server
+      - MCP_SERVER_NAME=${MCP_SERVER_NAME:-claw-auto-transcriber}
+      
+      # Audio Processing
+      - MAX_AUDIO_DURATION=${MAX_AUDIO_DURATION:-60}
+      - MAX_AUDIO_SIZE=${MAX_AUDIO_SIZE:-10485760}
+      - DEFAULT_LANGUAGE_CODE=${DEFAULT_LANGUAGE_CODE:-en-US}
+      - TEMP_AUDIO_DIR=/tmp/claw_transcriber
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      
+      # Performance
+      - TRANSCRIPTION_TIMEOUT=${TRANSCRIPTION_TIMEOUT:-30}
+      - MAX_RETRY_ATTEMPTS=${MAX_RETRY_ATTEMPTS:-3}
+      - RETRY_DELAY=${RETRY_DELAY:-1}
+    
+    volumes:
+      # Mount credentials (read-only for security)
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-./credentials/service-account.json}:/app/credentials/service-account.json:ro
+      
+      # Temp directory for audio processing (optional - uses container storage by default)
+      # - /tmp/claw_transcriber:/tmp/claw_transcriber
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp/claw_transcriber:mode=1777,size=100M
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Logging configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Network - not needed for stdio MCP, but useful for debugging
+    networks:
+      - claw-network
+
+networks:
+  claw-network:
+    driver: bridge
+
+# Development override example:
+# Create docker-compose.override.yml with:
+#
+# version: "3.9"
+# services:
+#   claw-transcriber:
+#     environment:
+#       - LOG_LEVEL=DEBUG
+#       - LOG_FORMAT=text
+#     volumes:
+#       - ./src:/app/src:ro
+#       - ./tools:/app/tools:ro

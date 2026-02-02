@@ -1,0 +1,77 @@
+# Claw Auto-Transcriber systemd Service Unit
+#
+# Installation:
+#   1. Copy this file to /etc/systemd/system/
+#   2. Create /etc/claw-transcriber/env with environment variables
+#   3. Run: sudo systemctl daemon-reload
+#   4. Run: sudo systemctl enable claw-transcriber
+#   5. Run: sudo systemctl start claw-transcriber
+#
+# Note: This service is designed for a supervisor/wrapper that connects
+# MCP clients to the server. For direct MCP stdio usage, the client
+# typically starts the server as a subprocess.
+
+[Unit]
+Description=Claw Auto-Transcriber MCP Server
+Documentation=https://github.com/k-junior-claw/claw-auto-transcriber
+After=network.target
+
+[Service]
+Type=simple
+
+# User and group (create with: sudo useradd -r -s /bin/false claw)
+User=claw
+Group=claw
+
+# Working directory
+WorkingDirectory=/opt/claw-transcriber
+
+# Environment file (create this file with your configuration)
+EnvironmentFile=/etc/claw-transcriber/env
+
+# Python virtual environment
+Environment="PATH=/opt/claw-transcriber/venv/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+# Executable
+ExecStart=/opt/claw-transcriber/venv/bin/python -m src.mcp_server
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+MemoryDenyWriteExecute=true
+LockPersonality=true
+
+# Allow writing to temp directory
+ReadWritePaths=/tmp/claw_transcriber
+
+# Allow reading credentials
+ReadOnlyPaths=/etc/claw-transcriber
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=100%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claw-transcriber
+
+[Install]
+WantedBy=multi-user.target

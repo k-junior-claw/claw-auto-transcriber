@@ -437,3 +437,156 @@ This section documents the completed implementation plan for the Google Cloud Sp
 6. ✅ Update `tests/conftest.py`
 7. ✅ Run full test suite (`pytest tests/ -v`)
 8. ✅ Verify all tests pass (187 tests, up from 141)
+
+---
+
+# Phase 5: Documentation & Deployment - Implementation Plan
+
+## Overview
+
+This document outlines the implementation plan for Phase 5 of the Claw Auto-Transcriber MCP Server. This phase focuses on creating comprehensive documentation and deployment configurations for production use.
+
+## 1. Current State Analysis
+
+### Already Implemented (Phases 1-4)
+
+- ✅ MCP Server with transcribe_audio tool
+- ✅ Audio processing (OGG, MP3, WAV, FLAC → FLAC conversion)
+- ✅ Google Cloud Speech-to-Text integration
+- ✅ Configuration management with environment variables
+- ✅ Structured logging (privacy-preserving)
+- ✅ 262 tests with comprehensive coverage
+- ✅ Basic .env.template
+
+### Missing (Phase 5 Tasks)
+
+1. **README.md** - Comprehensive project documentation
+2. **docs/setup.md** - Google Cloud setup guide
+3. **docs/mcp-client-config.md** - MCP client configuration guide
+4. **docs/usage-examples.md** - Code examples and use cases
+5. **Deployment Configs** - Docker, systemd, monitoring
+
+## 2. Implementation Steps
+
+### Step 1: Create README.md
+
+1. **Project Overview**
+   - What is this MCP server
+   - Key features and capabilities
+   - Architecture overview
+
+2. **Quick Start**
+   - Prerequisites
+   - Installation steps
+   - Basic configuration
+   - Running the server
+
+3. **Configuration Reference**
+   - All environment variables
+   - Default values
+   - Examples
+
+4. **API Reference**
+   - transcribe_audio tool schema
+   - Input parameters
+   - Response format
+   - Error codes
+
+### Step 2: Create docs/setup.md
+
+1. **Google Cloud Setup**
+   - Create project
+   - Enable Speech-to-Text API
+   - Create service account
+   - Download credentials
+
+2. **Environment Configuration**
+   - Copy .env.template
+   - Set all variables
+   - Credential file placement
+
+3. **Testing the Setup**
+   - Verify credentials
+   - Run test transcription
+
+### Step 3: Create docs/mcp-client-config.md
+
+1. **MCP Protocol Overview**
+   - What is MCP
+   - How the server exposes tools
+
+2. **Client Configuration**
+   - Claude Desktop config
+   - Other MCP clients
+   - Connection options (stdio/TCP)
+
+### Step 4: Create docs/usage-examples.md
+
+1. **Basic Usage**
+   - Simple transcription
+   - With metadata
+
+2. **Error Handling**
+   - Common errors
+   - Retry strategies
+
+3. **Integration Examples**
+   - Telegram voice messages
+   - File-based transcription
+
+### Step 5: Create Deployment Configs
+
+1. **Dockerfile**
+   - Multi-stage build
+   - Minimal runtime image
+   - Security best practices
+
+2. **docker-compose.yml**
+   - Service definition
+   - Environment variables
+   - Volume mounts for credentials
+
+3. **systemd service file**
+   - Service unit definition
+   - Auto-restart configuration
+   - Logging configuration
+
+## 3. Files to Create
+
+### Create
+- `README.md` - Main project documentation
+- `docs/setup.md` - Setup guide
+- `docs/mcp-client-config.md` - MCP client configuration
+- `docs/usage-examples.md` - Code examples
+- `Dockerfile` - Container build file
+- `docker-compose.yml` - Docker Compose configuration
+- `deployment/claw-transcriber.service` - systemd unit file
+
+### Modify
+- `PROJECT_SPEC.md` - Mark Phase 5 as COMPLETED
+
+## 4. Documentation Standards
+
+### Markdown Style
+- Use clear headers
+- Include code blocks with syntax highlighting
+- Add tables for configuration reference
+- Include diagrams where helpful
+
+### Code Examples
+- Show complete, working examples
+- Include error handling
+- Add comments explaining key steps
+
+## 5. Implementation Order
+
+1. [ ] Create README.md
+2. [ ] Create docs/ directory structure
+3. [ ] Create docs/setup.md
+4. [ ] Create docs/mcp-client-config.md
+5. [ ] Create docs/usage-examples.md
+6. [ ] Create Dockerfile
+7. [ ] Create docker-compose.yml
+8. [ ] Create deployment/claw-transcriber.service
+9. [ ] Update PROJECT_SPEC.md Phase 5 status
+10. [ ] Run full test suite to verify nothing broken
