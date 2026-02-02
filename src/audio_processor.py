@@ -31,6 +31,15 @@ from pydub.exceptions import CouldntDecodeError
 from src.config import get_config, Config
 from src.logger import get_logger, MCPLogger
 
+# Optional soundfile fallback for when ffmpeg is not available
+try:
+    import soundfile as sf
+    import numpy as np
+    from scipy import signal
+    SOUNDFILE_AVAILABLE = True
+except ImportError:
+    SOUNDFILE_AVAILABLE = False
+
 
 # Audio format signatures (magic bytes)
 AUDIO_SIGNATURES = {
@@ -403,9 +412,73 @@ class AudioProcessor:
             return segment
             
         except CouldntDecodeError as e:
+            # Try soundfile fallback for OGG files when ffmpeg is not available
+            if format.lower() == "ogg" and SOUNDFILE_AVAILABLE:
+                self._logger.debug("pydub failed, trying soundfile fallback")
+                return self._load_audio_segment_with_soundfile(audio_bytes, format)
             raise AudioConversionError(f"Failed to decode {format} audio: corrupted or invalid file")
         except Exception as e:
+            # Try soundfile fallback for OGG files when ffmpeg is not available
+            if format.lower() == "ogg" and SOUNDFILE_AVAILABLE:
+                self._logger.debug("pydub failed, trying soundfile fallback")
+                return self._load_audio_segment_with_soundfile(audio_bytes, format)
             raise AudioConversionError(f"Failed to load audio: {type(e).__name__}")
+
+    def _load_audio_segment_with_soundfile(self, audio_bytes: bytes, format: str) -> AudioSegment:
+        """
+        Load audio bytes using soundfile as fallback when pydub/ffmpeg fails.
+        
+        Args:
+            audio_bytes: Raw audio data
+            format: Audio format
+        
+        Returns:
+            AudioSegment instance
+        
+        Raises:
+            AudioConversionError: If loading fails
+        """
+        if not SOUNDFILE_AVAILABLE:
+            raise AudioConversionError("soundfile not available for fallback conversion")
+        
+        try:
+            import io
+            
+            # Read audio using soundfile
+            audio_io = io.BytesIO(audio_bytes)
+            data, samplerate = sf.read(audio_io)
+            
+            self._logger.debug(
+                "Loaded audio with soundfile",
+                sample_rate=samplerate,
+                channels=len(data.shape) if len(data.shape) > 1 else 1
+            )
+            
+            # Convert to mono if stereo
+            if len(data.shape) > 1:
+                data = data.mean(axis=1)
+            
+            # Resample to 16kHz for Google STT if needed
+            if samplerate != 16000:
+                num_samples = int(len(data) * 16000 / samplerate)
+                data = signal.resample(data, num_samples)
+                samplerate = 16000
+            
+            # Convert float to int16
+            data = (data * 32767).astype(np.int16)
+            
+            # Create AudioSegment from raw data
+            segment = AudioSegment(
+                data.tobytes(),
+                frame_rate=samplerate,
+                sample_width=2,  # 16-bit = 2 bytes
+                channels=1
+            )
+            
+            return segment
+            
+        except Exception as e:
+            raise AudioConversionError(f"soundfile fallback failed: {type(e).__name__}: {e}")
     
     def convert_to_flac(self, audio_segment: AudioSegment) -> bytes:
         """
