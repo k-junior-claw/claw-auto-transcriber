@@ -288,8 +288,8 @@ ls -la /path/to/service-account.json
 ### Connection Timeout
 
 **Check**: Server starts within reasonable time:
-- Verify FFmpeg is installed
 - Check Google Cloud credentials are valid
+- Verify Python dependencies are installed correctly
 
 ## Next Steps
 

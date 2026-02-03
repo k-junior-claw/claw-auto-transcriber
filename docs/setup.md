@@ -8,14 +8,16 @@ Before you begin, ensure you have:
 
 - **Python 3.10+**: Verify with `python3 --version`
 - **pip**: Python package manager
-- **FFmpeg**: Audio conversion library
 - **Google Cloud Account**: With billing enabled
 
-### Installing FFmpeg
+### Optional: Installing FFmpeg
+
+FFmpeg is **optional** and only needed as a fallback for certain audio formats. The primary audio processing uses the `soundfile` library which is installed automatically with the Python dependencies.
+
+If you encounter audio conversion issues, you can install FFmpeg:
 
 **Ubuntu/Debian:**
 ```bash
-sudo apt update
 sudo apt install ffmpeg
 ```
 
@@ -243,18 +245,20 @@ sudo chown $USER:$USER /path/to/credentials.json
 3. Search for "Cloud Speech-to-Text API"
 4. Click Enable
 
-### FFmpeg not found
+### Audio conversion errors (optional FFmpeg fallback)
 
-**Cause**: FFmpeg not installed or not in PATH.
+**Cause**: Some audio formats may fail to convert with the default soundfile library.
 
-**Solution**:
+**Solution**: Install FFmpeg as an optional fallback:
 ```bash
+# Ubuntu/Debian
+sudo apt install ffmpeg
+
 # Verify installation
 ffmpeg -version
-
-# If missing, install it (Ubuntu)
-sudo apt install ffmpeg
 ```
+
+Note: FFmpeg is optional. Most audio files work without it.
 
 ## Next Steps
 

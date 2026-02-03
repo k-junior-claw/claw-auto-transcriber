@@ -33,7 +33,7 @@ Claw Auto-Transcriber is a lightweight MCP server that exposes a `transcribe_aud
 
 - Python 3.10 or higher
 - Google Cloud account with Speech-to-Text API enabled
-- FFmpeg (for audio conversion)
+- FFmpeg (optional, for fallback audio conversion)
 
 ### Installation
 
@@ -283,8 +283,8 @@ See [docs/setup.md](docs/setup.md) for detailed deployment instructions.
 - Ensure the service account has the `Cloud Speech-to-Text API User` role
 
 **"Audio format not supported" error**
-- Ensure FFmpeg is installed: `ffmpeg -version`
 - Verify the audio is one of: OGG, MP3, WAV, FLAC
+- If using OGG files and soundfile fails, install FFmpeg as fallback: `sudo apt install ffmpeg`
 
 **"Audio duration exceeded" error**
 - Default max duration is 60 seconds
