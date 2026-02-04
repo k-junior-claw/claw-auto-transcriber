@@ -360,12 +360,12 @@ class TestConfig:
 MCP_SERVER_PORT=7777
 MAX_AUDIO_DURATION=90
 """)
-        
-        config = Config(env_file=env_file)
-        config.load(validate_credentials=False)
-        
-        assert config.mcp_server.port == 7777
-        assert config.audio.max_duration == 90
+        with patch.dict(os.environ, {}, clear=True):
+            config = Config(env_file=env_file)
+            config.load(validate_credentials=False)
+
+            assert config.mcp_server.port == 7777
+            assert config.audio.max_duration == 90
     
     def test_validate_not_loaded(self):
         """Test validation fails if not loaded."""
