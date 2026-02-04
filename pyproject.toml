@@ -24,6 +24,7 @@ dependencies = [
     "mcp>=1.0.0",
     "google-cloud-speech>=2.21.0",
     "pydub>=0.25.1",
+    "webrtcvad>=2.0.10",
     "python-dotenv>=1.0.0",
     "anyio>=4.0.0",
     "numpy>=2.2.6",
