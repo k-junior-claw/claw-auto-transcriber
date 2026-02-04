@@ -4,8 +4,6 @@ Async transcription tool for Claw Auto-Transcriber MCP Server.
 Provides filesystem-based asynchronous transcription with VAD chunking.
 """
 
-import json
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -274,7 +272,6 @@ class TranscribeAudioAsyncTool:
         tool_input: AsyncToolInput,
         chunks: List[Dict[str, Any]],
     ) -> None:
-        metadata_path = self.queue.paths.input_dir / f"{job_id}.json"
         payload = {
             "job_id": job_id,
             "original_file": str(tool_input.input_path),
@@ -283,10 +280,7 @@ class TranscribeAudioAsyncTool:
             "chunk_ids": [chunk["chunk_id"] for chunk in chunks],
             "created_at": int(time.time()),
         }
-        temp_path = metadata_path.with_suffix(".json.tmp")
-        with open(temp_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=True)
-        os.replace(temp_path, metadata_path)
+        self.queue.write_job_metadata(job_id, payload)
 
     def _cleanup_source(self, input_path: Path, chunk_paths: List[Path]) -> None:
         try:

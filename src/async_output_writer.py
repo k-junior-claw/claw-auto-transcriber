@@ -45,16 +45,21 @@ class AsyncOutputWriter:
     def output_dir(self) -> Path:
         return self.config.async_transcription.output_dir
 
-    def ensure_output_dir(self) -> Path:
+    def ensure_output_dir(self, output_dir: Optional[Path] = None) -> Path:
         """Ensure output directory exists."""
-        output_dir = self.output_dir
+        output_dir = output_dir or self.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
         _chmod_if_posix(output_dir, 0o700)
         return output_dir
 
-    def write_result(self, chunk_id: str, payload: Dict[str, Any]) -> Path:
+    def write_result(
+        self,
+        chunk_id: str,
+        payload: Dict[str, Any],
+        output_dir: Optional[Path] = None,
+    ) -> Path:
         """Write a result file atomically for the given chunk ID."""
-        output_dir = self.ensure_output_dir()
+        output_dir = self.ensure_output_dir(output_dir=output_dir)
         final_path = output_dir / f"{chunk_id}.txt"
         temp_name = f".{chunk_id}.{uuid.uuid4().hex}.tmp"
         temp_path = output_dir / temp_name

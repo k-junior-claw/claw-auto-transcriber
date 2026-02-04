@@ -9,6 +9,7 @@ Each tool is a self-contained module that defines:
 
 Available tools:
 - transcribe_audio: Transcribe audio/voice messages to text
+- transcribe-audio-async: Async transcription via filesystem queues
 """
 
 from typing import List
@@ -24,10 +25,22 @@ from tools.transcribe_audio import (
     TOOL_NAME,
     TOOL_DESCRIPTION,
 )
+from tools.transcribe_audio_async import (
+    TranscribeAudioAsyncTool,
+    AsyncToolInput,
+    AsyncToolResponse,
+    ToolInputError as AsyncToolInputError,
+    ToolExecutionError as AsyncToolExecutionError,
+    get_tool_schema as get_async_tool_schema,
+    validate_tool_input as validate_async_tool_input,
+    TOOL_NAME as ASYNC_TOOL_NAME,
+    TOOL_DESCRIPTION as ASYNC_TOOL_DESCRIPTION,
+)
 
 # List of available tool names
 AVAILABLE_TOOLS: List[str] = [
     "transcribe_audio",
+    "transcribe-audio-async",
 ]
 
 __all__ = [
@@ -44,5 +57,14 @@ __all__ = [
     # Constants
     "TOOL_NAME",
     "TOOL_DESCRIPTION",
+    "TranscribeAudioAsyncTool",
+    "AsyncToolInput",
+    "AsyncToolResponse",
+    "AsyncToolInputError",
+    "AsyncToolExecutionError",
+    "get_async_tool_schema",
+    "validate_async_tool_input",
+    "ASYNC_TOOL_NAME",
+    "ASYNC_TOOL_DESCRIPTION",
     "AVAILABLE_TOOLS",
 ]

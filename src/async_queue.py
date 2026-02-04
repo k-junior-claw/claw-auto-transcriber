@@ -10,7 +10,8 @@ Handles:
 from dataclasses import dataclass
 from pathlib import Path
 import os
-from typing import List, Optional
+import json
+from typing import Any, Dict, List, Optional
 
 from src.config import Config, get_config
 from src.logger import MCPLogger, get_logger
@@ -72,6 +73,31 @@ class AsyncQueue:
         if not paths.input_dir.exists():
             return []
         return sorted(paths.input_dir.glob("*.ogg"))
+
+    def job_metadata_path(self, job_id: str) -> Path:
+        """Return the metadata file path for a job."""
+        return self.paths.input_dir / f"{job_id}.json"
+
+    def write_job_metadata(self, job_id: str, payload: Dict[str, Any]) -> Path:
+        """Write job metadata to the input queue."""
+        self.ensure_directories()
+        metadata_path = self.job_metadata_path(job_id)
+        temp_path = metadata_path.with_suffix(".json.tmp")
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=True)
+        os.replace(temp_path, metadata_path)
+        return metadata_path
+
+    def read_job_metadata(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Read job metadata if present."""
+        metadata_path = self.job_metadata_path(job_id)
+        if not metadata_path.exists():
+            return None
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as handle:
+                return json.load(handle)
+        except Exception:
+            return None
 
     def is_within_input_dir(self, path: Path) -> bool:
         """Return True if path is within the configured input directory."""
