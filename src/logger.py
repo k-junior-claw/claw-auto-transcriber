@@ -298,8 +298,10 @@ class MCPLogger:
                 
                 self._logger.addHandler(handler)
         
-        # Prevent propagation to root logger
-        self._logger.propagate = False
+        # When stdout mode is enabled (parent has FileHandler), allow propagation
+        # to parent logger so messages go to the file. Otherwise, prevent
+        # propagation to root logger.
+        self._logger.propagate = has_file_handler
     
     def _prepare_extra(self, **kwargs) -> Dict[str, Any]:
         """Prepare extra fields for logging."""

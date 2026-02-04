@@ -54,6 +54,7 @@ def run_cli(media_path: Path, output_base: Optional[Path] = None, stdout_mode: b
         Exit code (0 on success, non-zero on error).
     """
     logger = get_logger("cli")
+    logger.debug("Starting CLI transcription", media_path=str(media_path))
 
     media_path = media_path.expanduser().resolve()
     if output_base is not None:

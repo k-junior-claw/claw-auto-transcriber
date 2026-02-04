@@ -210,7 +210,8 @@ def test_cli_argparse_stdout_with_outputbase_ignored(tmp_path, monkeypatch, caps
 
     assert exit_code == 0
     assert captured.out == "test output"
-    assert captured.err == ""
+    # stderr should contain log file location message when --stdout is used
+    assert "Logging to file:" in captured.err
     # Verify no file was created
     assert not output_base.with_suffix(".txt").exists()
 
