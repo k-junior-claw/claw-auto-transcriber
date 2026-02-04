@@ -9,7 +9,7 @@ google-cloud-speech>=2.21.0
 
 # Audio Processing
 pydub>=0.25.1
-webrtcvad>=2.0.10
+# Optional (requires Python headers): webrtcvad>=2.0.10
 
 # Environment Configuration
 python-dotenv>=1.0.0
