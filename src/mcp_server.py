@@ -73,16 +73,25 @@ from src.transcriber import (
     TranscriptionQuotaError,
     NoSpeechDetectedError,
 )
+from src.async_worker import AsyncWorkerManager
 from tools.transcribe_audio import (
     TranscribeAudioTool,
     ToolInput,
     ToolResponse,
     ToolInputError,
 )
+from tools.transcribe_audio_async import (
+    TranscribeAudioAsyncTool,
+    AsyncToolInput,
+    AsyncToolResponse,
+    ToolInputError as AsyncToolInputError,
+    ToolExecutionError as AsyncToolExecutionError,
+)
 
 
 # Tool name constant
 TRANSCRIBE_AUDIO_TOOL = "transcribe_audio"
+TRANSCRIBE_AUDIO_ASYNC_TOOL = "transcribe-audio-async"
 
 
 @dataclass
@@ -143,6 +152,8 @@ class MCPTranscriptionServer:
         self._audio_processor: Optional[AudioProcessor] = None
         self._transcriber: Optional[Transcriber] = None
         self._transcribe_tool: Optional[TranscribeAudioTool] = None
+        self._transcribe_async_tool: Optional[TranscribeAudioAsyncTool] = None
+        self._async_worker: Optional[AsyncWorkerManager] = None
         
         # Initialize state
         self.state = ServerState(
@@ -201,6 +212,26 @@ class MCPTranscriptionServer:
                 transcriber=self.transcriber
             )
         return self._transcribe_tool
+
+    @property
+    def transcribe_async_tool(self) -> TranscribeAudioAsyncTool:
+        """Get or create the async transcribe tool."""
+        if self._transcribe_async_tool is None:
+            self._transcribe_async_tool = TranscribeAudioAsyncTool(
+                config=self.config,
+                logger=self._logger.with_context(component="transcribe_async_tool"),
+            )
+        return self._transcribe_async_tool
+
+    @property
+    def async_worker(self) -> AsyncWorkerManager:
+        """Get or create the async worker manager."""
+        if self._async_worker is None:
+            self._async_worker = AsyncWorkerManager(
+                config=self.config,
+                logger=self._logger.with_context(component="async_worker"),
+            )
+        return self._async_worker
     
     def _register_handlers(self) -> None:
         """Register MCP protocol handlers."""
@@ -271,6 +302,14 @@ class MCPTranscriptionServer:
                     "required": ["audio_data"],
                 },
             ),
+            Tool(
+                name=TRANSCRIBE_AUDIO_ASYNC_TOOL,
+                description=(
+                    "Asynchronous transcription via filesystem queues. Accepts an absolute "
+                    "path to an OGG file and returns a job ID with chunk list."
+                ),
+                inputSchema=TranscribeAudioAsyncTool.get_schema()["inputSchema"],
+            ),
         ]
     
     async def _handle_tool_call(
@@ -309,6 +348,9 @@ class MCPTranscriptionServer:
                 # Note: success/failure tracking is done inside _handle_transcribe_audio
                 # based on the tool response's success flag
                 result = await self._handle_transcribe_audio(arguments, invocation_id)
+                return result
+            elif name == TRANSCRIBE_AUDIO_ASYNC_TOOL:
+                result = await self._handle_transcribe_audio_async(arguments, invocation_id)
                 return result
             else:
                 # Don't increment failed_invocations here - the exception handler will do it
@@ -386,7 +428,7 @@ class MCPTranscriptionServer:
                 text=f"Error: Audio processing failed - {str(e)}"
             )]
             
-        except ToolInputError as e:
+        except (ToolInputError, AsyncToolInputError) as e:
             self.state.failed_invocations += 1
             self._logger.error(
                 "Tool input validation failed",
@@ -396,6 +438,17 @@ class MCPTranscriptionServer:
             return [TextContent(
                 type="text",
                 text=f"Error: Invalid input - {str(e)}"
+            )]
+        except AsyncToolExecutionError as e:
+            self.state.failed_invocations += 1
+            self._logger.error(
+                "Async tool execution failed",
+                invocation_id=invocation_id,
+                error_type="async_execution"
+            )
+            return [TextContent(
+                type="text",
+                text=f"Error: Async execution failed - {str(e)}"
             )]
             
         except TranscriptionTimeoutError as e:
@@ -498,6 +551,49 @@ class MCPTranscriptionServer:
             type="text",
             text=json.dumps(response.to_dict(), indent=2)
         )]
+
+    async def _handle_transcribe_audio_async(
+        self,
+        arguments: dict,
+        invocation_id: str
+    ) -> Sequence[TextContent]:
+        """Handle async transcription tool invocation."""
+        import json
+
+        try:
+            tool_input = self.transcribe_async_tool.validate_input(arguments)
+            response = self.transcribe_async_tool.execute(tool_input)
+            self.state.successful_invocations += 1
+        except AsyncToolInputError as exc:
+            self.state.failed_invocations += 1
+            response = AsyncToolResponse(
+                job_id="",
+                status="rejected",
+                original_file=str(arguments.get("input_path", "")),
+                chunks=[],
+                error=str(exc),
+            )
+        except AsyncToolExecutionError as exc:
+            self.state.failed_invocations += 1
+            response = AsyncToolResponse(
+                job_id="",
+                status="error",
+                original_file=str(arguments.get("input_path", "")),
+                chunks=[],
+                error=str(exc),
+            )
+
+        self._logger.log_tool_response(
+            tool_name=TRANSCRIBE_AUDIO_ASYNC_TOOL,
+            invocation_id=invocation_id,
+            success=response.status == "accepted",
+            duration_ms=0,
+        )
+
+        return [TextContent(
+            type="text",
+            text=json.dumps(response.to_dict(), indent=2)
+        )]
     
     async def start(self) -> None:
         """Start the MCP server."""
@@ -507,6 +603,7 @@ class MCPTranscriptionServer:
             server_name=self.server_name
         )
         self.state.is_running = True
+        self.async_worker.start()
     
     async def stop(self) -> None:
         """Stop the MCP server and cleanup resources."""
@@ -518,6 +615,9 @@ class MCPTranscriptionServer:
         # Cleanup audio processor temp files
         if self._audio_processor:
             self._audio_processor.cleanup()
+
+        if self._async_worker:
+            self._async_worker.stop()
         
         self.state.is_running = False
         

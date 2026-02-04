@@ -25,6 +25,7 @@ The server provides a `transcribe_audio` tool that I (Kelvin Junior agent) invok
 **Platform:** Python  
 **Service Type:** MCP (Model Context Protocol) Server  
 **Primary Tool:** `transcribe_audio`  
+**Proposed Enhancement:** `transcribe-audio-async` (filesystem queue, chunked, async)  
 **Transcription Engine:** Google Cloud Speech-to-Text (STT)  
 **Key Innovation:** Voice/audio transcription as a reusable MCP tool
 
@@ -32,6 +33,7 @@ The server provides a `transcribe_audio` tool that I (Kelvin Junior agent) invok
 - **Server:** Implements MCP protocol, provides transcription tool
 - **Client:** I (Kelvin Junior agent) invoke the tool when needed
 - **Separation of Concerns:** Server handles audio→text, agent handles user interaction
+- **Async Enhancement:** Server embeds async workers for queued, chunked jobs
 
 ## 1. Components & Module Design
 
@@ -62,6 +64,41 @@ The server provides a `transcribe_audio` tool that I (Kelvin Junior agent) invok
 - `get_tool_schema()` - Return JSON schema for tool
 - `validate_inputs(audio_data, metadata)` - Validate invocation
 - `format_response(transcription, confidence)` - Format tool response
+
+#### 1.2b Async Tool Definition (`tools/transcribe_audio_async.py`) - **PROPOSED ENHANCEMENT**
+**Responsibilities:**
+- Define transcribe-audio-async tool interface (file path only)
+- Validate input path, size, and duration
+- Generate job_id (millisecond timestamp)
+- Run VAD chunking synchronously to return chunk list immediately
+- Move/rename files into async input queue
+
+**Key Functions:**
+- `get_tool_schema_async()` - Return JSON schema for async tool
+- `validate_inputs(input_path, chunk_duration, enable_vad)` - Validate invocation
+- `build_chunk_plan(audio_path)` - Determine chunk list before returning
+- `enqueue_job(job_id, chunk_paths)` - Move files into queue
+
+#### 1.2c Async Queue + Worker (`src/async_queue.py`, `src/async_worker.py`) - **PROPOSED ENHANCEMENT**
+**Responsibilities:**
+- Create and manage queue directories
+- Atomic moves and safe file claiming
+- Embedded worker pool for parallel chunk transcription
+- Retry failed chunks (2 attempts)
+- Write outputs to async output queue
+
+#### 1.2d VAD Chunker (`src/vad_chunker.py`) - **PROPOSED ENHANCEMENT**
+**Responsibilities:**
+- Use WebRTC VAD with aggressiveness 0-3
+- Merge/split segments to target chunk duration
+- Enforce max chunk duration
+- Export chunked OGG files
+
+#### 1.2e Async Output Writer (`src/async_output_writer.py`) - **PROPOSED ENHANCEMENT**
+**Responsibilities:**
+- Write chunk result JSON files
+- Atomic write (temp file then rename)
+- Standardize success/error payloads
 
 #### 1.3 Audio Processor (`audio_processor.py`)
 **Responsibilities:**
@@ -103,6 +140,11 @@ The server provides a `transcribe_audio` tool that I (Kelvin Junior agent) invok
 - `SUPPORTED_AUDIO_FORMATS`
 - `MAX_AUDIO_DURATION` (default: 60 seconds)
 - `TEMP_AUDIO_DIR`
+- `ASYNC_INPUT_DIR` / `ASYNC_OUTPUT_DIR`
+- `ASYNC_MAX_FILE_SIZE` / `ASYNC_MAX_DURATION`
+- `ASYNC_CHUNK_DURATION`
+- `ASYNC_VAD_AGGRESSIVENESS`
+- `ASYNC_PARALLEL_CHUNKS`
 
 #### 1.6 Logger Module (`logger.py`)
 **Responsibilities:**
@@ -174,6 +216,16 @@ sequenceDiagram
 9. **I generate and send** appropriate response back to user
 
 **Key Difference:** Unlike a bot, the MCP server **never interacts directly with Telegram**. It only provides the transcription capability that I invoke as a tool.
+
+### 2.1b Async Tool Invocation Sequence (PROPOSED)
+**Flow Description:**
+1. **I (agent)** detect a voice message and save it to a local file
+2. **I invoke** `transcribe-audio-async` with `input_path`
+3. **MCP Server** validates path, size, and duration
+4. **MCP Server** runs VAD chunking *synchronously* to produce chunk list
+5. **MCP Server** returns `job_id` and chunk list immediately
+6. **Embedded worker pool** transcribes queued chunks in parallel
+7. **Worker** writes each chunk result to `ASYNC_OUTPUT_DIR`
 
 ### 2.2 MCP Protocol Implementation Flow
 
@@ -279,6 +331,9 @@ sequenceDiagram
 }
 ```
 
+**Note:** This schema applies to the synchronous `transcribe_audio` tool.
+The async tool schema is defined in Section 3.6.
+
 ### 3.2 Configuration Data (.env file)
 
 ```bash
@@ -296,6 +351,15 @@ MAX_AUDIO_DURATION=60  # seconds
 TEMP_AUDIO_DIR=/tmp/claw_transcriber
 LOG_LEVEL=INFO
 
+# Async transcription (proposed)
+ASYNC_INPUT_DIR=/tmp/claw_transcriber/queue/in
+ASYNC_OUTPUT_DIR=/tmp/claw_transcriber/queue/out
+ASYNC_MAX_FILE_SIZE=10485760
+ASYNC_MAX_DURATION=300
+ASYNC_CHUNK_DURATION=10
+ASYNC_VAD_AGGRESSIVENESS=2
+ASYNC_PARALLEL_CHUNKS=3
+
 # Security
 REQUIRE_AUTHENTICATION=true
 RATE_LIMIT_PER_MINUTE=60
@@ -311,7 +375,7 @@ RATE_LIMIT_PER_MINUTE=60
   "server_id": "claw-transcriber-001",
   "start_time": "2026-02-01T12:00:00Z",
   "active_connections": 3,
-  "tools_registered": ["transcribe_audio"],
+  "tools_registered": ["transcribe_audio", "transcribe-audio-async"],
   "total_invocations": 157,
   "errors_in_session": 2
 }
@@ -354,6 +418,86 @@ RATE_LIMIT_PER_MINUTE=60
   "error": null
 }
 ```
+
+### 3.6 Async Tool Schema (JSON) - PROPOSED
+
+```json
+{
+  "tool_name": "transcribe-audio-async",
+  "description": "Asynchronous transcription for longer audio via filesystem queues",
+  "parameters": {
+    "input_path": {
+      "type": "string",
+      "description": "Absolute path to source OGG audio file"
+    },
+    "output_dir": {
+      "type": "string",
+      "description": "Optional output directory override"
+    },
+    "chunk_duration": {
+      "type": "number",
+      "description": "Target chunk duration in seconds (default from ASYNC_CHUNK_DURATION)"
+    },
+    "enable_vad": {
+      "type": "boolean",
+      "description": "Enable VAD-based chunking (default: true)"
+    },
+    "vad_aggressiveness": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "WebRTC VAD aggressiveness (0-3, default from ASYNC_VAD_AGGRESSIVENESS)"
+    }
+  },
+  "required": ["input_path"]
+}
+```
+
+### 3.7 Async Tool Response Schema (JSON) - PROPOSED
+
+```json
+{
+  "job_id": "1738691200123",
+  "status": "accepted",
+  "original_file": "/abs/path/to/source.ogg",
+  "chunks": [
+    {
+      "chunk_id": "1738691200123_01",
+      "status": "queued",
+      "output_path": "/tmp/claw_transcriber/queue/out/1738691200123_01.txt"
+    }
+  ],
+  "error": null
+}
+```
+
+### 3.8 Async Output File Format (JSON object per file)
+
+```json
+{
+  "job_id": "1738691200123",
+  "chunk_id": "1738691200123_01",
+  "sequence": 1,
+  "total_chunks": 3,
+  "transcription": "The quick brown fox...",
+  "confidence": 0.89,
+  "language_code": "en-US",
+  "duration_seconds": 10.0,
+  "processed_at": "2026-02-04T01:42:00Z",
+  "source_file": "/tmp/claw_transcriber/queue/in/1738691200123_01.ogg"
+}
+```
+
+### 3.9 Async Job ID Generation (PROPOSED)
+- `job_id = str(int(time.time() * 1000))`  # milliseconds
+- If a collision is detected within the same millisecond, append a numeric suffix
+  (for example: `1738691200123-1`, `1738691200123-2`).
+
+### 3.10 Async Path Validation Rules (PROPOSED)
+- `input_path` must be absolute
+- `input_path` must point to a readable file
+- Reject symlinks
+- Reject paths outside the allowed staging root (default: `ASYNC_INPUT_DIR`)
 
 ## 4. Implementation Plan (Revised for MCP Architecture)
 
@@ -748,6 +892,39 @@ async def _handle_transcribe_audio(arguments, invocation_id):
    - [x] systemd service file (`deployment/claw-transcriber.service`)
    - [x] Environment template (`deployment/env.template`)
 
+### Phase 6: Async Transcription Tool (PROPOSED ENHANCEMENT)
+
+**Status:** PROPOSED  
+**Goal:** Add filesystem-based async transcription with VAD chunking
+
+#### 6.1 Tool + Config + Queue Scaffolding
+- [ ] Add `transcribe-audio-async` tool definition
+- [ ] Add `AsyncConfig` and `ASYNC_*` env variables
+- [ ] Implement path validation and job_id generation (ms timestamp)
+- [ ] Add async queue utilities (atomic move, directory creation)
+
+#### 6.2 VAD Chunking (Synchronous in Tool Call)
+- [ ] Implement WebRTC VAD chunker with aggressiveness 0-3
+- [ ] Enforce min/target/max chunk durations
+- [ ] Return chunk list immediately from tool call
+
+#### 6.3 Embedded Worker Pool
+- [ ] Start/stop worker manager within MCP server lifecycle
+- [ ] Parallel transcription of queued chunks
+- [ ] Retry failed chunks up to 2 attempts
+- [ ] Write JSON output files atomically
+
+#### 6.4 Tests + Docs
+- [ ] Add unit tests for async tool, queue, chunker, worker
+- [ ] Add integration tests for async pipeline
+- [ ] Update docs and usage examples for async tool
+
+#### 6.5 Implementation Roadmap Summary (PROPOSED)
+1. **Scaffold**: tool schema + async config + queue utilities
+2. **Chunking**: synchronous VAD chunking with immediate chunk list
+3. **Workers**: embedded worker pool + output writer + retries
+4. **Quality**: tests, docs, and integration examples
+
 ## 5. MCP-Specific Considerations (NEW SECTION)
 
 ### 5.1 MCP Protocol Compliance
@@ -773,6 +950,21 @@ async def _handle_transcribe_audio(arguments, invocation_id):
           "metadata": {"type": "object"}
         },
         "required": ["audio_data"]
+      }
+    },
+    {
+      "name": "transcribe-audio-async",
+      "description": "Async transcription via filesystem queues",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "input_path": {"type": "string"},
+          "output_dir": {"type": "string"},
+          "chunk_duration": {"type": "number"},
+          "enable_vad": {"type": "boolean"},
+          "vad_aggressiveness": {"type": "integer"}
+        },
+        "required": ["input_path"]
       }
     }
   ]
@@ -825,6 +1017,7 @@ confidence = tool_response["confidence"]
 - Audio size limit: 10MB per invocation
 - Timeout per invocation: 30 seconds
 - Memory limit: 512MB per audio file
+- Async limits: use `ASYNC_MAX_FILE_SIZE`, `ASYNC_MAX_DURATION`, and `ASYNC_PARALLEL_CHUNKS`
 
 ## 6. File Structure (Updated for MCP Server)
 
@@ -835,18 +1028,23 @@ claw-auto-transcriber/
 ├── requirements.txt                      # Python dependencies (including mcp SDK)
 ├── pyproject.toml                        # Project configuration and build settings
 ├── README.md                             # Project overview (MCP server)
-├── PROJECT_SPEC.md                       # This specification (v3.1)
+├── PROJECT_SPEC.md                       # This specification (v3.5)
 ├── TASK_TRACKER.md                       # Implementation task tracker
 ├── src/                                  # **Source code directory**
 │   ├── __init__.py                       # Package initialization
 │   ├── mcp_server.py                     # MCP server implementation
 │   ├── audio_processor.py                # Audio handling
+│   ├── async_queue.py                    # Async queue management (proposed)
+│   ├── async_worker.py                   # Embedded worker pool (proposed)
+│   ├── vad_chunker.py                    # VAD chunking (proposed)
+│   ├── async_output_writer.py            # Async output writer (proposed)
 │   ├── transcriber.py                    # Google STT integration (Phase 2)
 │   ├── config.py                         # Configuration management
 │   └── logger.py                         # Logging utilities
 ├── tools/
 │   ├── __init__.py
 │   └── transcribe_audio.py               # Tool definition (Phase 3)
+│   └── transcribe_audio_async.py         # Async tool definition (proposed)
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py                       # Pytest configuration and fixtures
@@ -873,12 +1071,19 @@ claw-auto-transcriber/
 - **Google STT Integration:** API calls, response parsing, error handling
 - **Configuration:** .env loading, validation
 - **Logging:** Log structure, metadata inclusion
+- **Async Tool:** Path validation, job_id generation, chunk list response
+- **Async Queue:** Atomic moves, safe claiming, directory setup
+- **VAD Chunker:** Aggressiveness mapping, merge/split logic
+- **Async Worker:** Parallel chunk processing, retry policy
+- **Async Output Writer:** JSON payloads, atomic write
 
 ### 7.2 Integration Tests (Component Interactions)
 - MCP tool invocation → Audio processing → STT → Response flow
 - Concurrent tool calls (stress test)
 - Error propagation through layers
 - Audio validation before STT
+- Async tool invocation → VAD chunking → queue → worker → output files
+- Multiple async jobs processed concurrently
 
 ### 7.3 End-to-End Tests (MCP Protocol)
 - Full MCP tool invocation cycle
@@ -899,6 +1104,7 @@ claw-auto-transcriber/
 - Implement rate limiting (60 calls/minute per client)
 - Validate all inputs
 - Sanitize metadata to prevent injection
+- For async tool, validate file paths and disallow symlinks
 - Log only metadata (no audio content)
 
 ### 8.3 Privacy & Data Protection
@@ -1020,8 +1226,8 @@ When receiving a new development request, follow this workflow:
 
 ## 11. Future Enhancements
 
-**Out of Scope:**
-- Support for longer audio (>60 seconds)
+**Out of Scope (for transcribe_audio sync tool):**
+- Support for longer audio (>60 seconds) in synchronous mode
 - Batch transcription (multiple audio files)
 - Real-time streaming transcription
 - Speaker diarization
@@ -1030,7 +1236,7 @@ When receiving a new development request, follow this workflow:
 
 ---
 
-**Last Updated:** 2026-02-02  
-**Version:** 3.4 (MCP SERVER)  
-**Status:** Phase 5 COMPLETED  
-**Review:** All phases complete - documentation, deployment configs, and 262 tests passing
+**Last Updated:** 2026-02-04  
+**Version:** 3.5 (MCP SERVER)  
+**Status:** Phase 5 COMPLETED; Phase 6 PROPOSED  
+**Review:** Async tool enhancement proposed; implementation and tests pending

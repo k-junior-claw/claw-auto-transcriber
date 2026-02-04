@@ -26,6 +26,7 @@ from src.config import (
     AudioConfig,
     SecurityConfig,
     PerformanceConfig,
+    AsyncTranscriptionConfig,
     LoggingConfig,
     LogLevel,
     LogFormat,
@@ -252,6 +253,70 @@ class TestPerformanceConfig:
             config.validate()
 
 
+class TestAsyncTranscriptionConfig:
+    """Tests for AsyncTranscriptionConfig."""
+
+    def test_default_values(self):
+        """Test default configuration values."""
+        config = AsyncTranscriptionConfig()
+
+        assert str(config.input_dir).endswith("/tmp/claw_transcriber/queue/in")
+        assert str(config.output_dir).endswith("/tmp/claw_transcriber/queue/out")
+        assert config.max_file_size == 10 * 1024 * 1024
+        assert config.max_duration == 300
+        assert config.chunk_duration == 10
+        assert config.vad_aggressiveness == 2
+        assert config.parallel_chunks == 3
+
+    def test_validate_invalid_max_file_size(self):
+        """Test validation fails with invalid max file size."""
+        config = AsyncTranscriptionConfig(max_file_size=0)
+
+        with pytest.raises(ConfigurationError, match="ASYNC_MAX_FILE_SIZE"):
+            config.validate()
+
+    def test_validate_invalid_max_duration(self):
+        """Test validation fails with invalid max duration."""
+        config = AsyncTranscriptionConfig(max_duration=0)
+
+        with pytest.raises(ConfigurationError, match="ASYNC_MAX_DURATION"):
+            config.validate()
+
+    def test_validate_excessive_max_duration(self):
+        """Test validation fails with max duration over 300s."""
+        config = AsyncTranscriptionConfig(max_duration=400)
+
+        with pytest.raises(ConfigurationError, match="cannot exceed 300"):
+            config.validate()
+
+    def test_validate_invalid_chunk_duration(self):
+        """Test validation fails with invalid chunk duration."""
+        config = AsyncTranscriptionConfig(chunk_duration=0)
+
+        with pytest.raises(ConfigurationError, match="ASYNC_CHUNK_DURATION"):
+            config.validate()
+
+    def test_validate_chunk_duration_too_large(self):
+        """Test validation fails with chunk duration over 30s."""
+        config = AsyncTranscriptionConfig(chunk_duration=60)
+
+        with pytest.raises(ConfigurationError, match="cannot exceed 30"):
+            config.validate()
+
+    def test_validate_invalid_vad_aggressiveness(self):
+        """Test validation fails with invalid VAD aggressiveness."""
+        config = AsyncTranscriptionConfig(vad_aggressiveness=4)
+
+        with pytest.raises(ConfigurationError, match="ASYNC_VAD_AGGRESSIVENESS"):
+            config.validate()
+
+    def test_validate_invalid_parallel_chunks(self):
+        """Test validation fails with invalid parallel chunk count."""
+        config = AsyncTranscriptionConfig(parallel_chunks=0)
+
+        with pytest.raises(ConfigurationError, match="ASYNC_PARALLEL_CHUNKS"):
+            config.validate()
+
 class TestConfig:
     """Tests for the main Config class."""
     
@@ -264,6 +329,7 @@ class TestConfig:
             assert config.mcp_server.host == "localhost"
             assert config.mcp_server.port == 8765
             assert config.audio.max_duration == 60
+            assert config.async_transcription.max_duration == 300
     
     def test_load_from_environment(self):
         """Test loading configuration from environment variables."""
@@ -272,6 +338,8 @@ class TestConfig:
             "MCP_SERVER_PORT": "9000",
             "MAX_AUDIO_DURATION": "120",
             "LOG_LEVEL": "DEBUG",
+            "ASYNC_MAX_DURATION": "240",
+            "ASYNC_VAD_AGGRESSIVENESS": "3",
         }
         
         with patch.dict(os.environ, env_vars, clear=True):
@@ -282,6 +350,8 @@ class TestConfig:
             assert config.mcp_server.port == 9000
             assert config.audio.max_duration == 120
             assert config.logging.level == LogLevel.DEBUG
+            assert config.async_transcription.max_duration == 240
+            assert config.async_transcription.vad_aggressiveness == 3
     
     def test_load_from_env_file(self, tmp_path):
         """Test loading configuration from .env file."""
