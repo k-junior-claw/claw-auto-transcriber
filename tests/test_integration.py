@@ -970,14 +970,15 @@ class TestToolDiscovery:
     def test_list_tools_returns_transcribe_audio(self, server):
         """Test that list_tools returns the transcribe_audio tool."""
         tools = server._get_tools()
-        
-        assert len(tools) == 1
-        assert tools[0].name == TRANSCRIBE_AUDIO_TOOL
+
+        tool_names = [tool.name for tool in tools]
+        assert TRANSCRIBE_AUDIO_TOOL in tool_names
+        assert "transcribe-audio-async" in tool_names
     
     def test_tool_description_contains_key_info(self, server):
         """Test that tool description contains required information."""
         tools = server._get_tools()
-        tool = tools[0]
+        tool = next(tool for tool in tools if tool.name == TRANSCRIBE_AUDIO_TOOL)
         
         description = tool.description.lower()
         
@@ -988,7 +989,7 @@ class TestToolDiscovery:
     def test_tool_input_schema_complete(self, server):
         """Test that tool input schema is complete."""
         tools = server._get_tools()
-        schema = tools[0].inputSchema
+        schema = next(tool for tool in tools if tool.name == TRANSCRIBE_AUDIO_TOOL).inputSchema
         
         # Required structure
         assert schema["type"] == "object"
