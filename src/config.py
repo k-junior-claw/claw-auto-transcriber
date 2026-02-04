@@ -168,6 +168,35 @@ class PerformanceConfig:
 
 
 @dataclass
+class AsyncTranscriptionConfig:
+    """Async transcription configuration settings."""
+    input_dir: Path = field(default_factory=lambda: Path("/tmp/claw_transcriber/queue/in"))
+    output_dir: Path = field(default_factory=lambda: Path("/tmp/claw_transcriber/queue/out"))
+    max_file_size: int = 10 * 1024 * 1024  # 10MB
+    max_duration: int = 300  # seconds
+    chunk_duration: int = 10  # seconds
+    vad_aggressiveness: int = 2  # WebRTC VAD aggressiveness (0-3)
+    parallel_chunks: int = 3
+
+    def validate(self) -> None:
+        """Validate async transcription configuration."""
+        if self.max_file_size <= 0:
+            raise ConfigurationError("ASYNC_MAX_FILE_SIZE must be positive")
+        if self.max_duration <= 0:
+            raise ConfigurationError("ASYNC_MAX_DURATION must be positive")
+        if self.max_duration > 300:
+            raise ConfigurationError("ASYNC_MAX_DURATION cannot exceed 300 seconds")
+        if self.chunk_duration <= 0:
+            raise ConfigurationError("ASYNC_CHUNK_DURATION must be positive")
+        if self.chunk_duration > 30:
+            raise ConfigurationError("ASYNC_CHUNK_DURATION cannot exceed 30 seconds")
+        if not (0 <= self.vad_aggressiveness <= 3):
+            raise ConfigurationError("ASYNC_VAD_AGGRESSIVENESS must be between 0 and 3")
+        if self.parallel_chunks <= 0:
+            raise ConfigurationError("ASYNC_PARALLEL_CHUNKS must be positive")
+
+
+@dataclass
 class LoggingConfig:
     """Logging configuration settings."""
     level: LogLevel = LogLevel.INFO
@@ -212,6 +241,7 @@ class Config:
         self.audio: AudioConfig = AudioConfig()
         self.security: SecurityConfig = SecurityConfig()
         self.performance: PerformanceConfig = PerformanceConfig()
+        self.async_transcription: AsyncTranscriptionConfig = AsyncTranscriptionConfig()
         self.logging: LoggingConfig = LoggingConfig()
     
     def load(self, validate_credentials: bool = True) -> "Config":
@@ -276,6 +306,17 @@ class Config:
             max_retry_attempts=int(os.getenv("MAX_RETRY_ATTEMPTS", "3")),
             retry_delay=float(os.getenv("RETRY_DELAY", "1"))
         )
+
+        # Load Async transcription configuration
+        self.async_transcription = AsyncTranscriptionConfig(
+            input_dir=Path(os.getenv("ASYNC_INPUT_DIR", "/tmp/claw_transcriber/queue/in")),
+            output_dir=Path(os.getenv("ASYNC_OUTPUT_DIR", "/tmp/claw_transcriber/queue/out")),
+            max_file_size=int(os.getenv("ASYNC_MAX_FILE_SIZE", str(10 * 1024 * 1024))),
+            max_duration=int(os.getenv("ASYNC_MAX_DURATION", "300")),
+            chunk_duration=int(os.getenv("ASYNC_CHUNK_DURATION", "10")),
+            vad_aggressiveness=int(os.getenv("ASYNC_VAD_AGGRESSIVENESS", "2")),
+            parallel_chunks=int(os.getenv("ASYNC_PARALLEL_CHUNKS", "3"))
+        )
         
         # Load Logging configuration
         log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -324,6 +365,7 @@ class Config:
         self.audio.validate()
         self.security.validate()
         self.performance.validate()
+        self.async_transcription.validate()
         self.logging.validate()
         
         return self
@@ -336,6 +378,16 @@ class Config:
         """
         self.audio.temp_dir.mkdir(parents=True, exist_ok=True)
         return self.audio.temp_dir
+
+    def ensure_async_dirs(self) -> tuple[Path, Path]:
+        """Ensure async queue directories exist.
+
+        Returns:
+            Tuple of (input_dir, output_dir).
+        """
+        self.async_transcription.input_dir.mkdir(parents=True, exist_ok=True)
+        self.async_transcription.output_dir.mkdir(parents=True, exist_ok=True)
+        return self.async_transcription.input_dir, self.async_transcription.output_dir
     
     def is_format_supported(self, format_str: str) -> bool:
         """Check if an audio format is supported.
