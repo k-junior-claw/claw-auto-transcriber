@@ -52,3 +52,19 @@ class TestAsyncQueue:
 
         assert queue.is_within_input_dir(inside) is True
         assert queue.is_within_input_dir(outside) is False
+
+    def test_write_and_read_job_metadata(self, config):
+        queue = AsyncQueue(config=config)
+        queue.ensure_directories()
+
+        payload = {
+            "job_id": "job123",
+            "total_chunks": 2,
+            "output_dir": "/tmp/output",
+        }
+        metadata_path = queue.write_job_metadata("job123", payload)
+
+        assert metadata_path.exists()
+        loaded = queue.read_job_metadata("job123")
+        assert loaded["job_id"] == "job123"
+        assert loaded["total_chunks"] == 2

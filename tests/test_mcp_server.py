@@ -23,6 +23,7 @@ from src.mcp_server import (
     MCPTranscriptionServer,
     ServerState,
     TRANSCRIBE_AUDIO_TOOL,
+    TRANSCRIBE_AUDIO_ASYNC_TOOL,
     create_server,
     run_server,
 )
@@ -37,6 +38,7 @@ from src.audio_processor import (
     AudioProcessingError,
 )
 from src.config import Config
+from tools.transcribe_audio_async import AsyncToolResponse
 
 
 class TestServerState:
@@ -100,15 +102,16 @@ class TestMCPTranscriptionServer:
     def test_get_tools(self, server):
         """Test getting available tools."""
         tools = server._get_tools()
-        
-        assert len(tools) == 1
-        assert tools[0].name == TRANSCRIBE_AUDIO_TOOL
-        assert "transcribe" in tools[0].description.lower()
+
+        tool_names = [tool.name for tool in tools]
+        assert TRANSCRIBE_AUDIO_TOOL in tool_names
+        assert TRANSCRIBE_AUDIO_ASYNC_TOOL in tool_names
     
     def test_tool_schema(self, server):
         """Test tool schema is correct."""
         tools = server._get_tools()
-        tool = tools[0]
+
+        tool = next(tool for tool in tools if tool.name == TRANSCRIBE_AUDIO_TOOL)
         
         schema = tool.inputSchema
         
@@ -185,6 +188,28 @@ class TestToolInvocation:
         assert len(result) == 1
         assert "Missing required parameter" in result[0].text
         assert server.state.failed_invocations == 1
+
+    @pytest.mark.asyncio
+    async def test_handle_transcribe_audio_async_success(self, server):
+        """Test successful transcribe-audio-async invocation."""
+        mock_response = AsyncToolResponse(
+            job_id="job123",
+            status="accepted",
+            original_file="/tmp/input.ogg",
+            chunks=[{"chunk_id": "job123_01", "status": "queued", "output_path": "/tmp/out.txt"}],
+            error=None,
+        )
+        with patch.object(server.transcribe_async_tool, "validate_input", return_value=MagicMock()), \
+            patch.object(server.transcribe_async_tool, "execute", return_value=mock_response):
+            result = await server._handle_tool_call(
+                TRANSCRIBE_AUDIO_ASYNC_TOOL,
+                {"input_path": "/tmp/input.ogg"},
+            )
+
+        assert len(result) == 1
+        response = json.loads(result[0].text)
+        assert response["status"] == "accepted"
+        assert response["job_id"] == "job123"
     
     @pytest.mark.asyncio
     async def test_handle_unknown_tool(self, server):
@@ -369,20 +394,24 @@ class TestServerLifecycle:
     @pytest.mark.asyncio
     async def test_start(self, server):
         """Test server start."""
+        server._async_worker = MagicMock()
         await server.start()
         
         assert server.state.is_running is True
+        server._async_worker.start.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_stop(self, server):
         """Test server stop."""
         server.state.is_running = True
         server._audio_processor = MagicMock()
+        server._async_worker = MagicMock()
         
         await server.stop()
         
         assert server.state.is_running is False
         server._audio_processor.cleanup.assert_called_once()
+        server._async_worker.stop.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_stop_without_processor(self, server):

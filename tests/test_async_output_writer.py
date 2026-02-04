@@ -39,3 +39,13 @@ class TestAsyncOutputWriter:
         data = json.loads(output_path.read_text())
         assert data["job_id"] == "123"
         assert data["chunk_id"] == "123_01"
+
+    def test_write_result_with_override_dir(self, config, tmp_path):
+        writer = AsyncOutputWriter(config=config)
+        payload = {"job_id": "abc", "chunk_id": "abc"}
+        override_dir = tmp_path / "override"
+
+        output_path = writer.write_result("abc", payload, output_dir=override_dir)
+
+        assert output_path.exists()
+        assert output_path.parent == override_dir
