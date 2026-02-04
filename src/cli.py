@@ -6,41 +6,49 @@ audio processing and transcription pipeline exposed by the
 `transcribe_audio` MCP tool.
 
 Usage:
-    claw-transcriber-cli <mediaPath> <outputBase>
+    claw-transcriber-cli <mediaPath> [<outputBase>] [--stdout]
 
 Where:
     - mediaPath   : Path to the input audio file (e.g. /tmp/in.ogg)
-    - outputBase  : Base path for the output (e.g. /tmp/out/my_new)
+    - outputBase  : Base path for the output (e.g. /tmp/out/my_new).
+                    Required when --stdout is not specified. Optional when
+                    --stdout is used (ignored if provided).
+    - --stdout    : If provided, write the transcription to stdout instead
+                    of a file and suppress all logging output.
 
-The CLI will write:
+By default the CLI will write:
     <outputBase>.txt
 
-containing ONLY the transcription text (no metadata).
+containing ONLY the transcription text (no metadata). When --stdout is
+used, the transcription text is written directly to stdout with no
+additional log or debug output, and outputBase is not required.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
 
 from src.config import get_config
-from src.logger import get_logger
+from src.logger import get_logger, configure_logging_for_stdout_mode, get_stdout_mode_log_path
 from tools.transcribe_audio import (
     TranscribeAudioTool,
     ToolInputError,
 )
 
 
-def run_cli(media_path: Path, output_base: Path) -> int:
+def run_cli(media_path: Path, output_base: Optional[Path] = None, stdout_mode: bool = False) -> int:
     """
     Core CLI logic.
 
     Args:
         media_path: Path to the input audio file.
         output_base: Base path (without extension) for the output file.
+                     Optional when stdout_mode is True, required otherwise.
 
     Returns:
         Exit code (0 on success, non-zero on error).
@@ -48,7 +56,8 @@ def run_cli(media_path: Path, output_base: Path) -> int:
     logger = get_logger("cli")
 
     media_path = media_path.expanduser().resolve()
-    output_base = output_base.expanduser().resolve()
+    if output_base is not None:
+        output_base = output_base.expanduser().resolve()
 
     if not media_path.is_file():
         print(f"Input file does not exist or is not a file: {media_path}", file=sys.stderr)
@@ -100,13 +109,23 @@ def run_cli(media_path: Path, output_base: Path) -> int:
 
     transcription = response.transcription or ""
 
-    output_path = output_base.with_suffix(".txt")
     try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        # Write strictly the transcription text, no extra metadata.
-        output_path.write_text(transcription, encoding="utf-8")
-    except Exception as exc:  # pragma: no cover - unlikely filesystem errors
-        print(f"Failed to write output file: {exc}", file=sys.stderr)
+        if stdout_mode:
+            # In stdout mode, do not create or write an output file. Emit
+            # only the raw transcription text to stdout.
+            sys.stdout.write(transcription)
+            sys.stdout.flush()
+        else:
+            if output_base is None:
+                print("outputBase is required when --stdout is not specified", file=sys.stderr)
+                return 1
+            output_path = output_base.with_suffix(".txt")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            # Write strictly the transcription text, no extra metadata.
+            output_path.write_text(transcription, encoding="utf-8")
+    except Exception as exc:  # pragma: no cover - unlikely I/O errors
+        target = "stdout" if stdout_mode else "output file"
+        print(f"Failed to write {target}: {exc}", file=sys.stderr)
         return 1
 
     return 0
@@ -118,7 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="claw-transcriber-cli",
         description=(
             "Standalone CLI for Claw Auto-Transcriber. "
-            "Transcribes an audio file and writes the transcription to a .txt file."
+            "Transcribes an audio file and writes the transcription to a .txt file, "
+            "or to stdout when --stdout is provided."
         ),
     )
     parser.add_argument(
@@ -127,9 +147,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "outputBase",
+        nargs="?",
         help=(
             "Base path for the output text file (e.g. /tmp/out/my_new). "
-            "The CLI will write <outputBase>.txt"
+            "The CLI will write <outputBase>.txt. Required when --stdout is "
+            "not specified. Optional when --stdout is used (ignored if provided)."
+        ),
+    )
+    parser.add_argument(
+        "--stdout",
+        action="store_true",
+        help=(
+            "Write the transcription directly to stdout instead of a file and "
+            "suppress all logging output."
         ),
     )
     return parser
@@ -148,10 +178,25 @@ def cli(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    media_path = Path(args.mediaPath)
-    output_base = Path(args.outputBase)
+    # Validate that outputBase is provided when --stdout is not used
+    if not args.stdout and args.outputBase is None:
+        parser.error("outputBase is required when --stdout is not specified")
 
-    return run_cli(media_path, output_base)
+    stdout_mode = bool(getattr(args, "stdout", False))
+    
+    # Configure logging to file when stdout mode is enabled
+    # This must happen BEFORE any loggers are created
+    log_file_path = None
+    if stdout_mode:
+        log_file_path = get_stdout_mode_log_path()
+        configure_logging_for_stdout_mode(log_file_path)
+        # Inform user where logs are going (one-time message to stderr)
+        print(f"Logging to file: {log_file_path}", file=sys.stderr)
+
+    media_path = Path(args.mediaPath)
+    output_base = Path(args.outputBase) if args.outputBase is not None else None
+
+    return run_cli(media_path, output_base, stdout_mode=stdout_mode)
 
 
 def main() -> None:

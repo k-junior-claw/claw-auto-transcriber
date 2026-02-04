@@ -16,7 +16,9 @@ import json
 import time
 import sys
 import uuid
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, Any, Dict, Callable
 from functools import wraps
 from contextlib import contextmanager
@@ -276,15 +278,25 @@ class MCPLogger:
         self._logger.setLevel(getattr(logging, log_level.value))
         
         # Configure handler if not already configured
+        # Check if parent "claw" logger already has a FileHandler (stdout mode)
+        # If so, don't add a StreamHandler - let it inherit from parent
+        parent_logger = logging.getLogger("claw")
+        has_file_handler = any(
+            isinstance(h, logging.FileHandler) for h in parent_logger.handlers
+        )
+        
         if not self._logger.handlers:
-            handler = logging.StreamHandler(sys.stderr)
-            
-            if log_format == LogFormat.JSON:
-                handler.setFormatter(StructuredJsonFormatter())
-            else:
-                handler.setFormatter(StructuredTextFormatter())
-            
-            self._logger.addHandler(handler)
+            # Only add StreamHandler if parent doesn't have FileHandler
+            # (i.e., not in stdout mode)
+            if not has_file_handler:
+                handler = logging.StreamHandler(sys.stderr)
+                
+                if log_format == LogFormat.JSON:
+                    handler.setFormatter(StructuredJsonFormatter())
+                else:
+                    handler.setFormatter(StructuredTextFormatter())
+                
+                self._logger.addHandler(handler)
         
         # Prevent propagation to root logger
         self._logger.propagate = False
@@ -503,6 +515,62 @@ def timed(logger: Optional[MCPLogger] = None, operation: Optional[str] = None):
         return sync_wrapper
     
     return decorator
+
+
+def get_stdout_mode_log_path() -> Path:
+    """
+    Generate log file path for stdout mode.
+    
+    Creates a timestamped log file in the temp directory to avoid conflicts.
+    
+    Returns:
+        Path to the log file (directory will be created if needed)
+    """
+    temp_dir = Path(tempfile.gettempdir()) / "claw_transcriber"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return temp_dir / f"cli_stdout_{timestamp}.log"
+
+
+def configure_logging_for_stdout_mode(log_file_path: Path) -> None:
+    """
+    Configure logging to write to a file instead of stderr.
+    
+    This should be called before any loggers are created when --stdout mode
+    is enabled to ensure all logging goes to the file instead of stderr/stdout.
+    
+    Args:
+        log_file_path: Path to the log file (will be created if needed)
+    """
+    # Ensure the log file directory exists
+    log_file_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Get logging configuration
+    try:
+        config = get_config()
+        log_level = config.logging.level
+        log_format = config.logging.format
+    except Exception:
+        log_level = LogLevel.INFO
+        log_format = LogFormat.JSON
+    
+    # Configure the root "claw" logger
+    root_logger = logging.getLogger("claw")
+    root_logger.setLevel(getattr(logging, log_level.value))
+    
+    # Remove any existing handlers (especially stderr handlers)
+    root_logger.handlers.clear()
+    
+    # Add FileHandler instead of StreamHandler
+    handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+    
+    if log_format == LogFormat.JSON:
+        handler.setFormatter(StructuredJsonFormatter())
+    else:
+        handler.setFormatter(StructuredTextFormatter())
+    
+    root_logger.addHandler(handler)
+    root_logger.propagate = False
 
 
 # Configure the root logger for the application

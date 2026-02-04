@@ -62,7 +62,7 @@ def test_run_cli_success(tmp_path, monkeypatch):
 
     output_base = tmp_path / "out" / "my_new"
 
-    exit_code = cli_module.run_cli(media_path, output_base)
+    exit_code = cli_module.run_cli(media_path, output_base, stdout_mode=False)
 
     assert exit_code == 0
     output_path = output_base.with_suffix(".txt")
@@ -91,7 +91,7 @@ def test_run_cli_tool_failure(tmp_path, monkeypatch, capsys):
 
     output_base = tmp_path / "out" / "my_new"
 
-    exit_code = cli_module.run_cli(media_path, output_base)
+    exit_code = cli_module.run_cli(media_path, output_base, stdout_mode=False)
     captured = capsys.readouterr()
 
     assert exit_code != 0
@@ -119,7 +119,7 @@ def test_run_cli_no_speech_success(tmp_path, monkeypatch):
 
     output_base = tmp_path / "out" / "my_new"
 
-    exit_code = cli_module.run_cli(media_path, output_base)
+    exit_code = cli_module.run_cli(media_path, output_base, stdout_mode=False)
 
     assert exit_code == 0
     output_path = output_base.with_suffix(".txt")
@@ -132,7 +132,7 @@ def test_run_cli_missing_input_file(tmp_path, capsys):
     media_path = tmp_path / "does_not_exist.ogg"
     output_base = tmp_path / "out" / "my_new"
 
-    exit_code = cli_module.run_cli(media_path, output_base)
+    exit_code = cli_module.run_cli(media_path, output_base, stdout_mode=False)
     captured = capsys.readouterr()
 
     assert exit_code != 0
@@ -144,7 +144,7 @@ def test_run_cli_missing_input_file(tmp_path, capsys):
 
 def test_cli_argparse_missing_arguments(capsys):
     """
-    Calling cli() with missing arguments should result in SystemExit from argparse.
+    Calling cli() with missing mediaPath should result in SystemExit from argparse.
     This tests the argument parsing layer without touching the filesystem.
     """
     with pytest.raises(SystemExit) as excinfo:
@@ -154,4 +154,131 @@ def test_cli_argparse_missing_arguments(capsys):
     captured = capsys.readouterr()
     # argparse typically prints usage information to stderr.
     assert "usage:" in captured.err
+
+
+def test_cli_argparse_stdout_without_outputbase(tmp_path, monkeypatch, capsys):
+    """When --stdout is used, outputBase is optional and not required."""
+    media_path = tmp_path / "input.ogg"
+    media_path.write_bytes(b"fake-audio-bytes")
+
+    response = DummyToolResponse(success=True, transcription="test output")
+    dummy_tool = DummyTranscribeAudioTool(response=response)
+
+    def fake_transcribe_audio_tool(*args, **kwargs):
+        return dummy_tool
+
+    monkeypatch.setattr(cli_module, "TranscribeAudioTool", fake_transcribe_audio_tool)
+
+    # Call cli() with --stdout but no outputBase
+    exit_code = cli_module.cli(argv=[str(media_path), "--stdout"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == "test output"
+    # stderr should contain log file location message, but no actual log output
+    assert "Logging to file:" in captured.err
+
+
+def test_cli_argparse_no_stdout_missing_outputbase(capsys):
+    """When --stdout is not used, outputBase is required."""
+    with pytest.raises(SystemExit) as excinfo:
+        # Only provide mediaPath, missing outputBase
+        cli_module.cli(argv=["/tmp/test.ogg"])
+
+    assert excinfo.value.code != 0
+    captured = capsys.readouterr()
+    assert "outputBase is required when --stdout is not specified" in captured.err
+
+
+def test_cli_argparse_stdout_with_outputbase_ignored(tmp_path, monkeypatch, capsys):
+    """When --stdout is used, outputBase can be provided but is ignored."""
+    media_path = tmp_path / "input.ogg"
+    media_path.write_bytes(b"fake-audio-bytes")
+
+    response = DummyToolResponse(success=True, transcription="test output")
+    dummy_tool = DummyTranscribeAudioTool(response=response)
+
+    def fake_transcribe_audio_tool(*args, **kwargs):
+        return dummy_tool
+
+    monkeypatch.setattr(cli_module, "TranscribeAudioTool", fake_transcribe_audio_tool)
+
+    # Call cli() with --stdout and outputBase (should be ignored)
+    output_base = tmp_path / "ignored" / "output"
+    exit_code = cli_module.cli(argv=[str(media_path), str(output_base), "--stdout"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == "test output"
+    assert captured.err == ""
+    # Verify no file was created
+    assert not output_base.with_suffix(".txt").exists()
+
+
+def test_run_cli_stdout_mode_writes_to_stdout_only(tmp_path, monkeypatch, capsys):
+    """When --stdout mode is used, write transcription to stdout and no file."""
+    media_path = tmp_path / "input.ogg"
+    media_bytes = b"fake-audio-bytes"
+    media_path.write_bytes(media_bytes)
+
+    response = DummyToolResponse(success=True, transcription="hello from stdout")
+    dummy_tool = DummyTranscribeAudioTool(response=response)
+
+    def fake_transcribe_audio_tool(*args, **kwargs):
+        return dummy_tool
+
+    monkeypatch.setattr(cli_module, "TranscribeAudioTool", fake_transcribe_audio_tool)
+
+    # In stdout mode, output_base can be None
+    exit_code = cli_module.run_cli(media_path, output_base=None, stdout_mode=True)
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    # Transcription should go to stdout only.
+    assert captured.out == "hello from stdout"
+    # stderr should be empty (logging goes to file, not stderr)
+    assert captured.err == ""
+
+
+def test_cli_stdout_mode_logs_to_file(tmp_path, monkeypatch, capsys):
+    """When --stdout is used, verify logging goes to file and stdout stays clean."""
+    import tempfile
+    from pathlib import Path
+    
+    media_path = tmp_path / "input.ogg"
+    media_path.write_bytes(b"fake-audio-bytes")
+
+    response = DummyToolResponse(success=True, transcription="test transcription")
+    dummy_tool = DummyTranscribeAudioTool(response=response)
+
+    def fake_transcribe_audio_tool(*args, **kwargs):
+        return dummy_tool
+
+    monkeypatch.setattr(cli_module, "TranscribeAudioTool", fake_transcribe_audio_tool)
+
+    # Use a known temp directory for log file
+    with monkeypatch.context() as m:
+        # Patch get_stdout_mode_log_path to use our test directory
+        test_log_path = tmp_path / "test_cli.log"
+        m.setattr(
+            cli_module,
+            "get_stdout_mode_log_path",
+            lambda: test_log_path
+        )
+        
+        exit_code = cli_module.cli(argv=[str(media_path), "--stdout"])
+        captured = capsys.readouterr()
+
+        assert exit_code == 0
+        # Transcription should be in stdout
+        assert captured.out == "test transcription"
+        # Log file location message should be in stderr
+        assert "Logging to file:" in captured.err
+        assert str(test_log_path) in captured.err
+        
+        # Verify log file was created and contains log entries
+        assert test_log_path.exists()
+        log_content = test_log_path.read_text(encoding="utf-8")
+        # Log file should contain some log entries (exact content depends on logging format)
+        assert len(log_content) > 0
 

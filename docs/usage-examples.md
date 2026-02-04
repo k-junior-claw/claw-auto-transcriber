@@ -58,12 +58,13 @@ Include all available metadata for tracking:
 
 ## CLI Usage
 
-In addition to the MCP tool and Python APIs, you can use a standalone CLI that runs the same transcription pipeline on local audio files and writes the transcription to a `.txt` file.
+In addition to the MCP tool and Python APIs, you can use a standalone CLI that runs the same transcription pipeline on local audio files and writes the transcription to a `.txt` file or to stdout.
 
 The CLI entry point is `claw-transcriber-cli` and it expects:
 
 - `mediaPath`: path to the input audio file (for example `examples/sample.ogg`)
-- `outputBase`: base path (without extension) for the output file (the CLI will write `<outputBase>.txt`)
+- `outputBase`: base path (without extension) for the output file (the CLI will write `<outputBase>.txt`). Required when `--stdout` is not specified. Optional when `--stdout` is used (ignored if provided).
+- `--stdout`: optional flag to write the transcription directly to stdout instead of a file, suppressing all logging output.
 
 ### When installed as a Python package
 
@@ -83,12 +84,22 @@ uv tool install claw-auto-transcriber
 
 Once installed, you can run the CLI from anywhere:
 
+**Default mode (write to file):**
 ```bash
 claw-transcriber-cli /tmp/in.ogg /tmp/out/my_new
 
 # The CLI writes ONLY the transcription text to:
 #   /tmp/out/my_new.txt
 cat /tmp/out/my_new.txt
+```
+
+**Stdout mode (write to stdout, no file):**
+```bash
+# When --stdout is used, outputBase is not required
+claw-transcriber-cli /tmp/in.ogg --stdout
+
+# Or pipe the output directly
+claw-transcriber-cli /tmp/in.ogg --stdout | tee transcript.txt
 ```
 
 Supported audio formats and limits are the same as for the MCP tool and Python APIs described elsewhere in this guide.
@@ -106,7 +117,11 @@ git clone <your-clone-url> claw-auto-transcriber
 cd claw-auto-transcriber
 
 # One-off run using the console script defined in pyproject.toml
+# Default mode: write to file
 uv run claw-transcriber-cli examples/sample.ogg tmp/out/sample
+
+# Stdout mode: write to stdout (outputBase not required)
+uv run claw-transcriber-cli examples/sample.ogg --stdout
 
 # Or run the module directly
 uv run python -m src.cli examples/sample.ogg tmp/out/sample
