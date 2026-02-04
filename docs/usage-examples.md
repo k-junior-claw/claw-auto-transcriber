@@ -56,6 +56,72 @@ Include all available metadata for tracking:
 }
 ```
 
+## CLI Usage
+
+In addition to the MCP tool and Python APIs, you can use a standalone CLI that runs the same transcription pipeline on local audio files and writes the transcription to a `.txt` file.
+
+The CLI entry point is `claw-transcriber-cli` and it expects:
+
+- `mediaPath`: path to the input audio file (for example `examples/sample.ogg`)
+- `outputBase`: base path (without extension) for the output file (the CLI will write `<outputBase>.txt`)
+
+### When installed as a Python package
+
+After installing the project as a package, the `claw-transcriber-cli` command will be available on your `PATH`.
+
+For example, using `pip`:
+
+```bash
+pip install claw-auto-transcriber
+```
+
+Or, using `uv` as a tool manager:
+
+```bash
+uv tool install claw-auto-transcriber
+```
+
+Once installed, you can run the CLI from anywhere:
+
+```bash
+claw-transcriber-cli /tmp/in.ogg /tmp/out/my_new
+
+# The CLI writes ONLY the transcription text to:
+#   /tmp/out/my_new.txt
+cat /tmp/out/my_new.txt
+```
+
+Supported audio formats and limits are the same as for the MCP tool and Python APIs described elsewhere in this guide.
+
+On success, the CLI exits with code `0`. If an error occurs (for example: missing or empty file, unsupported format, or a transcription failure), it prints a message to stderr and exits with a non-zero code.
+
+### Running from a local clone with `uv`
+
+If you have cloned the repository and want to run the CLI without installing the package globally, you can use `uv` to manage the environment and dependencies.
+
+From a fresh clone:
+
+```bash
+git clone <your-clone-url> claw-auto-transcriber
+cd claw-auto-transcriber
+
+# One-off run using the console script defined in pyproject.toml
+uv run claw-transcriber-cli examples/sample.ogg tmp/out/sample
+
+# Or run the module directly
+uv run python -m src.cli examples/sample.ogg tmp/out/sample
+```
+
+`uv run` will create and manage a virtual environment for this project and install all dependencies declared in `pyproject.toml` automatically.
+
+The CLI uses the same configuration and environment as the MCP server. Make sure your `.env` file and/or environment variables (for example, Google Cloud credentials) are set up as described in the setup guide.
+
+For more details:
+
+- See `docs/setup.md` for environment and credential configuration.
+- See `README.md` for an overview of the project and MCP server.
+- Continue reading the rest of this document for programmatic and MCP-based usage; the CLI is a simpler, file-based interface on top of the same transcription pipeline.
+
 ## Python Integration
 
 ### Reading Audio File

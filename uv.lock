@@ -258,6 +258,9 @@ no-ffmpeg = [
     { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "soundfile" },
 ]
+vad = [
+    { name = "webrtcvad" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -275,8 +278,9 @@ requires-dist = [
     { name = "scipy", marker = "extra == 'no-ffmpeg'", specifier = ">=1.10.0" },
     { name = "soundfile", specifier = ">=0.13.1" },
     { name = "soundfile", marker = "extra == 'no-ffmpeg'", specifier = ">=0.12.0" },
+    { name = "webrtcvad", marker = "extra == 'vad'", specifier = ">=2.0.10" },
 ]
-provides-extras = ["dev", "no-ffmpeg"]
+provides-extras = ["dev", "vad", "no-ffmpeg"]
 
 [[package]]
 name = "click"
@@ -1797,3 +1801,9 @@ sdist = { url = "https://files.pythonhosted.org/packages/c3/d1/8f3c683c9561a4e66
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/d8/2083a1daa7439a66f3a48589a57d576aa117726762618f6bb09fe3798796/uvicorn-0.40.0-py3-none-any.whl", hash = "sha256:c6c8f55bc8bf13eb6fa9ff87ad62308bbbc33d0b67f84293151efe87e0d5f2ee", size = 68502, upload-time = "2025-12-21T14:16:21.041Z" },
 ]
+
+[[package]]
+name = "webrtcvad"
+version = "2.0.10"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/34/e2de2d97f3288512b9ea56f92e7452f8207eb5a0096500badf9dfd48f5e6/webrtcvad-2.0.10.tar.gz", hash = "sha256:f1bed2fb25b63fb7b1a55d64090c993c9c9167b28485ae0bcdd81cf6ede96aea", size = 66156, upload-time = "2017-01-07T23:05:18.732Z" }

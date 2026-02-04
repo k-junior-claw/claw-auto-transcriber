@@ -38,7 +38,7 @@ class TestSoundfileFallback:
     
     @pytest.mark.skipif(not SOUNDFILE_AVAILABLE, reason="soundfile not installed")
     @pytest.mark.skipif(not NUMPY_AVAILABLE, reason="numpy not installed")
-    def test_load_audio_segment_with_soundfile_success(self, processor, mocker):
+    def test_load_audio_segment_with_soundfile_success(self, processor):
         """Test successful audio loading with soundfile."""
         # Mock soundfile.read to return test data
         import numpy as np
@@ -61,7 +61,7 @@ class TestSoundfileFallback:
             assert segment.channels == 1  # Should be mono
     
     @pytest.mark.skipif(not SOUNDFILE_AVAILABLE, reason="soundfile not installed")
-    def test_load_audio_segment_with_soundfile_failure(self, processor, mocker):
+    def test_load_audio_segment_with_soundfile_failure(self, processor):
         """Test soundfile fallback failure handling."""
         with patch('src.audio_processor.sf.read') as mock_read:
             mock_read.side_effect = Exception("Read error")
@@ -72,7 +72,6 @@ class TestSoundfileFallback:
                 processor._load_audio_segment_with_soundfile(audio_bytes, 'ogg')
             
             assert "soundfile fallback failed" in str(exc_info.value)
-        AudioConversionError
 
 
 class TestFallbackIntegration:
@@ -84,7 +83,7 @@ class TestFallbackIntegration:
         return AudioProcessor()
     
     @pytest.mark.skipif(not SOUNDFILE_AVAILABLE, reason="soundfile not installed")
-    def test_pydub_failure_triggers_fallback(self, processor, mocker):
+    def test_pydub_failure_triggers_fallback(self, processor):
         """Test that pydub failure triggers soundfile fallback for OGG."""
         # Mock pydub to fail
         with patch('src.audio_processor.AudioSegment.from_file') as mock_from_file:

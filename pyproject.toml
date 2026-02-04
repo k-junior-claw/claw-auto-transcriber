@@ -48,6 +48,7 @@ no-ffmpeg = [
 
 [project.scripts]
 claw-transcriber = "src.mcp_server:main"
+claw-transcriber-cli = "src.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]

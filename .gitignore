@@ -246,3 +246,5 @@ tests/fixtures/*.wav
 # OS files
 .DS_Store
 Thumbs.db
+
+tmp/
